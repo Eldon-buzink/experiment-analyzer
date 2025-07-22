@@ -126,11 +126,15 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
     const total = controlCount + variantCount;
     const expectedRatio = 0.5;
     const actualRatio = total > 0 ? controlCount / total : 0;
-    // Chi-squared test for SRM
     const expected = [total * expectedRatio, total * (1 - expectedRatio)];
     const observed = [controlCount, variantCount];
-    // Use simple-statistics for chi-squared
-    const chi2 = ss.chiSquaredGoodnessOfFit(observed, expected);
+    // Manual chi-squared calculation for SRM
+    let chi2 = 0;
+    for (let i = 0; i < observed.length; i++) {
+      if (expected[i] > 0) {
+        chi2 += Math.pow(observed[i] - expected[i], 2) / expected[i];
+      }
+    }
     // Approximate p-value for 1 degree of freedom
     const p = Math.exp(-0.5 * Number(chi2)); // simple approximation for p-value
     const srmDetected = p < 0.05;
