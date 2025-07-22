@@ -12,6 +12,7 @@ import {
 import KPIBarChart from "@/components/KPIBarChart";
 import { useDropzone } from "react-dropzone";
 import { Badge } from "@/components/ui/badge";
+import Papa from 'papaparse';
 
 // Define types for KPI results and API response
 interface KpiResult {
@@ -65,22 +66,22 @@ export default function Home() {
     }
   };
 
+  // New: Read CSV and extract headers (numeric columns)
   const handleUpload = async (e: React.FormEvent<HTMLFormElement> | React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     if (!file) return;
     setLoading(true);
     setError("");
     setResults(null);
-    const formData = new FormData();
-    formData.append("file", file);
     try {
-      const res = await fetch("http://localhost:8000/upload", {
-        method: "POST",
-        body: formData,
-      });
-      if (!res.ok) throw new Error("Failed to upload file");
-      const data = await res.json();
-      setKpis(data.kpis);
+      const text = await file.text();
+      const parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
+      const rows = parsed.data as Record<string, string>[];
+      // Find numeric columns
+      const numericColumns = Object.keys(rows[0] || {}).filter(key =>
+        rows.some(row => !isNaN(Number(row[key])) && row[key] !== "" && row[key] !== null)
+      );
+      setKpis(numericColumns);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Upload failed");
     } finally {
@@ -101,20 +102,23 @@ export default function Home() {
     );
   };
 
+  // New: Send CSV string and KPI info to /api/analyze
   const handleAnalyze = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!file || !primaryKpi) return;
     setLoading(true);
     setError("");
     setResults(null);
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("primary_kpi", primaryKpi);
-    formData.append("secondary_kpis", secondaryKpis.join(","));
     try {
-      const res = await fetch("http://localhost:8000/analyze", {
+      const csv = await file.text();
+      const res = await fetch("/api/analyze", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          csv,
+          primary_kpi: primaryKpi,
+          secondary_kpis: secondaryKpis.join(","),
+        }),
       });
       if (!res.ok) throw new Error("Failed to analyze data");
       const data: ApiResults = await res.json();
