@@ -13,15 +13,33 @@ import KPIBarChart from "@/components/KPIBarChart";
 import { useDropzone } from "react-dropzone";
 import { Badge } from "@/components/ui/badge";
 
+// Define types for KPI results and API response
+interface KpiResult {
+  control_mean: number;
+  variant_mean: number;
+  control_median: number;
+  variant_median: number;
+  percent_lift: string;
+  p_value: number;
+  significant: boolean;
+  variant_better: boolean;
+}
+
+interface ApiResults {
+  meta: Record<string, unknown>;
+  primary_kpi: KpiResult;
+  secondary_kpis: Record<string, KpiResult>;
+}
+
 export default function Home() {
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState<number>(1);
   const [file, setFile] = useState<File | null>(null);
   const [kpis, setKpis] = useState<string[]>([]);
-  const [primaryKpi, setPrimaryKpi] = useState("");
+  const [primaryKpi, setPrimaryKpi] = useState<string>("");
   const [secondaryKpis, setSecondaryKpis] = useState<string[]>([]);
-  const [results, setResults] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [results, setResults] = useState<ApiResults | null>(null);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string>("");
 
   // Drag & Drop logic
   const onDrop = React.useCallback((acceptedFiles: File[]) => {
@@ -47,7 +65,7 @@ export default function Home() {
     }
   };
 
-  const handleUpload = async (e: React.FormEvent) => {
+  const handleUpload = async (e: React.FormEvent<HTMLFormElement> | React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     if (!file) return;
     setLoading(true);
@@ -63,8 +81,8 @@ export default function Home() {
       if (!res.ok) throw new Error("Failed to upload file");
       const data = await res.json();
       setKpis(data.kpis);
-    } catch (err: any) {
-      setError(err.message || "Upload failed");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Upload failed");
     } finally {
       setLoading(false);
     }
@@ -83,7 +101,7 @@ export default function Home() {
     );
   };
 
-  const handleAnalyze = async (e: React.FormEvent) => {
+  const handleAnalyze = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!file || !primaryKpi) return;
     setLoading(true);
@@ -99,10 +117,10 @@ export default function Home() {
         body: formData,
       });
       if (!res.ok) throw new Error("Failed to analyze data");
-      const data = await res.json();
+      const data: ApiResults = await res.json();
       setResults(data);
-    } catch (err: any) {
-      setError(err.message || "Analysis failed");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Analysis failed");
     } finally {
       setLoading(false);
     }
@@ -220,25 +238,25 @@ export default function Home() {
                       <div className="space-y-3 leading-relaxed">
                         <div>
                           <span className="font-semibold">Test Name: </span>
-                          <span className="font-mono break-all">{results.meta.test_name}</span>
+                          <span className="font-mono break-all">{String(results.meta.test_name ?? "")}</span>
                         </div>
                         <div>
                           <span className="font-semibold">Variants:</span>
                           <div className="ml-4 mt-1 space-y-1">
                             <div>
-                              <span className="font-medium">{results.meta.control_name}: </span>
-                              <span>{results.meta.control_count} users</span>
+                              <span className="font-medium">{String(results.meta.control_name ?? "Control")}: </span>
+                              <span>{Number(results.meta.control_count ?? 0)} users</span>
                             </div>
                             <div>
-                              <span className="font-medium">{results.meta.variant_name}: </span>
-                              <span>{results.meta.variant_count} users</span>
+                              <span className="font-medium">{String(results.meta.variant_name ?? "Variant")}: </span>
+                              <span>{Number(results.meta.variant_count ?? 0)} users</span>
                             </div>
                           </div>
                         </div>
                         <div>
                           <span className="font-semibold">Split: </span>
                           <span>
-                            {results.meta.actual_split}% vs {100 - results.meta.actual_split}%{" "}
+                            {Number(results.meta.actual_split ?? 0)}% vs {100 - Number(results.meta.actual_split ?? 0)}%{" "}
                             <span className="text-muted-foreground">(expected 50/50)</span>
                           </span>
                         </div>
@@ -247,7 +265,7 @@ export default function Home() {
                           <span className={`ml-2 px-2 py-1 rounded text-white ${results.meta.srm_detected ? "bg-red-500" : "bg-green-500"}`}>
                             {results.meta.srm_detected ? "⚠️ Yes" : "✅ No"}
                           </span>
-                          <span className="ml-2 text-muted-foreground">(p = {results.meta.srm_p_value})</span>
+                          <span className="ml-2 text-muted-foreground">(p = {Number(results.meta.srm_p_value ?? 0)})</span>
                         </div>
                       </div>
                     </div>
@@ -297,7 +315,7 @@ export default function Home() {
                       <div className="font-semibold mb-2">Secondary KPI Results</div>
                       <div className="grid gap-6">
                         {Object.entries(results.secondary_kpis).map(
-                          ([kpi, res]: [string, any]) => (
+                          ([kpi, res]: [string, KpiResult]) => (
                             <div key={kpi} className="border rounded-lg p-4">
                               <div className="flex items-center gap-2 mb-2">
                                 <span className="font-medium">{kpi}</span>
