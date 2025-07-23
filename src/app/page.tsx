@@ -39,7 +39,8 @@ interface MannWhitneyResult {
   variant_mean: number;
   control_median: number;
   variant_median: number;
-  percent_lift: string;
+  estimated_lift_median: string;
+  estimated_lift_mean: string;
   p_value: number;
   significant: boolean;
   variant_better: boolean;
@@ -177,15 +178,16 @@ export default function Home() {
       const controlName = 'Control';
       const variantName = rows.find(r => r[variantColumn] !== controlName)?.[variantColumn] || 'Variant';
 
-      function analyzeKpi(kpi: string) {
-        const control = rows.filter(r => String(r[variantColumn]) === controlName).map(r => Number(r[kpi]) || 0);
-        const variant = rows.filter(r => String(r[variantColumn]) !== controlName).map(r => Number(r[kpi]) || 0);
+      function analyzeKpi(kpi: string): MannWhitneyResult {
+        // Only use rows with valid KPI and variant label
+        const validRows = rows.filter(r => r[kpi] !== undefined && r[kpi] !== null && r[kpi] !== '' && r[variantColumn] !== undefined && r[variantColumn] !== null && r[variantColumn] !== '');
+        const control = validRows.filter(r => String(r[variantColumn]) === controlName).map(r => Number(r[kpi]));
+        const variant = validRows.filter(r => String(r[variantColumn]) !== controlName).map(r => Number(r[kpi]));
         const controlMedian = ss.median(control);
         const variantMedian = ss.median(variant);
         const controlMean = ss.mean(control);
         const variantMean = ss.mean(variant);
-        const lift = controlMedian !== 0 ? ((variantMedian - controlMedian) / controlMedian) * 100 : 0;
-        // Use Wilcoxon rank-sum (Mann-Whitney U) and approximate p-value
+        // Mann-Whitney U and normal approximation for p-value
         const u = ss.wilcoxonRankSum(control, variant);
         const n1 = control.length;
         const n2 = variant.length;
@@ -194,15 +196,19 @@ export default function Home() {
         const z = sigma !== 0 ? (u - mu) / sigma : 0;
         const pValue = 2 * (1 - ss.cumulativeStdNormalProbability(Math.abs(z)));
         const significant = pValue < 0.05;
+        const variant_better = variantMedian > controlMedian;
+        const median_lift = controlMedian !== 0 ? ((variantMedian - controlMedian) / controlMedian) * 100 : 0;
+        const mean_lift = controlMean !== 0 ? ((variantMean - controlMean) / controlMean) * 100 : 0;
         return {
           control_mean: Number(controlMean.toFixed(2)),
           variant_mean: Number(variantMean.toFixed(2)),
           control_median: Number(controlMedian.toFixed(2)),
           variant_median: Number(variantMedian.toFixed(2)),
-          percent_lift: `${lift.toFixed(2)}%`,
-          p_value: Number(pValue.toFixed(4)),
+          estimated_lift_median: `${median_lift.toFixed(2)}%`,
+          estimated_lift_mean: `${mean_lift.toFixed(2)}%`,
+          p_value: pValue,
           significant,
-          variant_better: variantMedian > controlMedian,
+          variant_better,
         };
       }
 
@@ -415,7 +421,7 @@ export default function Home() {
                     <div className="grid grid-cols-2 gap-2 mt-4 text-sm">
                       <div><span className="font-medium">Control Median:</span> {results.primary_kpi.control_median}</div>
                       <div><span className="font-medium">Variant Median:</span> {results.primary_kpi.variant_median}</div>
-                      <div><span className="font-medium">Estimated Lift:</span> {results.primary_kpi.percent_lift}</div>
+                      <div><span className="font-medium">Estimated Lift:</span> {results.primary_kpi.estimated_lift_median}</div>
                       <div><span className="font-medium">p-value:</span> {results.primary_kpi.p_value}</div>
                     </div>
                     <div className="mt-2 text-xs text-muted-foreground">
@@ -451,7 +457,7 @@ export default function Home() {
                               <div className="grid grid-cols-2 gap-2 mt-4 text-sm">
                                 <div><span className="font-medium">Control Median:</span> {res.control_median}</div>
                                 <div><span className="font-medium">Variant Median:</span> {res.variant_median}</div>
-                                <div><span className="font-medium">Estimated Lift:</span> {res.percent_lift}</div>
+                                <div><span className="font-medium">Estimated Lift:</span> {res.estimated_lift_median}</div>
                                 <div><span className="font-medium">p-value:</span> {res.p_value}</div>
                               </div>
                               <div className="mt-2 text-xs text-muted-foreground">
