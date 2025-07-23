@@ -13,6 +13,7 @@ import KPIBarChart from "@/components/KPIBarChart";
 import { useDropzone } from "react-dropzone";
 import { Badge } from "@/components/ui/badge";
 import Papa from 'papaparse';
+import { supabase } from "@/lib/supabase";
 
 // Define types for KPI results and API response
 interface KpiResult {
@@ -66,27 +67,59 @@ export default function Home() {
     }
   };
 
-  // New: Read CSV and extract headers (numeric columns)
-  const handleUpload = async (e: React.FormEvent<HTMLFormElement> | React.MouseEvent<HTMLButtonElement>) => {
-    e.preventDefault();
+  // Replace handleUpload with Supabase upload/download logic
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
     if (!file) return;
+
     setLoading(true);
     setError("");
     setResults(null);
-    try {
-      const text = await file.text();
-      const parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
-      const rows = parsed.data as Record<string, string>[];
-      // Find numeric columns
-      const numericColumns = Object.keys(rows[0] || {}).filter(key =>
-        rows.some(row => !isNaN(Number(row[key])) && row[key] !== "" && row[key] !== null)
-      );
-      setKpis(numericColumns);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Upload failed");
-    } finally {
+
+    const fileName = `${Date.now()}-${file.name}`;
+
+    const { data, error } = await supabase.storage
+      .from("csv-uploads")
+      .upload(fileName, file);
+
+    if (error) {
+      setError("Upload failed: " + error.message);
       setLoading(false);
+      return;
     }
+
+    // Now download the file and parse it with PapaParse
+    const { data: downloadData, error: downloadError } = await supabase.storage
+      .from("csv-uploads")
+      .download(data.path);
+
+    if (downloadError || !downloadData) {
+      setError("Failed to download uploaded file");
+      setLoading(false);
+      return;
+    }
+
+    const text = await downloadData.text();
+
+    Papa.parse(text, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (result) => {
+        // Find numeric columns
+        const rows = result.data as Record<string, string>[];
+        const numericColumns = Object.keys(rows[0] || {}).filter(key =>
+          rows.some(row => !isNaN(Number(row[key])) && row[key] !== "" && row[key] !== null)
+        );
+        setKpis(numericColumns);
+        setFile(file);
+        setStep(2);
+        setLoading(false);
+      },
+      error: (err: unknown) => {
+        setError("CSV parse error: " + (err instanceof Error ? err.message : String(err)));
+        setLoading(false);
+      }
+    });
   };
 
   const handlePrimaryKpiChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -157,7 +190,7 @@ export default function Home() {
               <CardContent>
                 <div>
                   <div {...getRootProps()} className={`border-2 border-dashed rounded-lg p-8 flex flex-col items-center justify-center cursor-pointer transition-colors ${isDragActive ? 'border-primary bg-accent/30' : 'border-muted'}`}>
-                    <input {...getInputProps()} />
+                    <input {...getInputProps()} onChange={handleUpload} />
                     <span className="text-2xl mb-2">📂</span>
                     <span>{isDragActive ? "Drop the CSV here..." : "Drag & drop your CSV here, or click to browse"}</span>
                   </div>
@@ -167,7 +200,7 @@ export default function Home() {
                       <Button variant="outline" size="sm" onClick={() => setFile(null)} type="button">Remove</Button>
                     </div>
                   )}
-                  <Button className="mt-6 w-full" onClick={async (e) => { await handleUpload(e); if (!error && file) setStep(2); }} disabled={!file || loading}>
+                  <Button className="mt-6 w-full" onClick={() => { document.getElementById('file-input')?.click(); }} disabled={!file || loading}>
                     {loading ? "Uploading..." : "Next"}
                   </Button>
                   {error && <div className="text-red-500 mt-4">{error}</div>}
