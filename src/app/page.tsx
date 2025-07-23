@@ -71,8 +71,8 @@ interface AnalysisResult {
 // Add type for KPI impact row
 interface KpiImpactRow {
   kpi: string;
-  controlCount: number;
-  variantCount: number;
+  controlSum: number;
+  variantSum: number;
   controlCR: number;
   variantCR: number;
   percentChange: number;
@@ -254,19 +254,21 @@ export default function Home() {
       const impactRows: KpiImpactRow[] = kpis.map(kpi => {
         const controlRows = rows.filter(r => String(r[variantColumn]) === controlName);
         const variantRows = rows.filter(r => String(r[variantColumn]) !== controlName);
-        // Count users with value > 0 (event count)
-        const controlCount = controlRows.filter(r => Number(r[kpi]) > 0).length;
-        const variantCount = variantRows.filter(r => Number(r[kpi]) > 0).length;
-        // Conversion rate: event count / total users in variant
-        const controlTotal = controlRows.filter(r => r[kpi] !== undefined && r[kpi] !== null && r[kpi] !== '').length;
-        const variantTotal = variantRows.filter(r => r[kpi] !== undefined && r[kpi] !== null && r[kpi] !== '').length;
-        const controlCR = controlTotal ? (controlCount / controlTotal) * 100 : 0;
-        const variantCR = variantTotal ? (variantCount / variantTotal) * 100 : 0;
+        // Sum of KPI values
+        const controlSum = controlRows.reduce((sum, r) => sum + (Number(r[kpi]) || 0), 0);
+        const variantSum = variantRows.reduce((sum, r) => sum + (Number(r[kpi]) || 0), 0);
+        // CR: users with value > 0 / total users in variant group
+        const controlTotal = controlRows.length;
+        const variantTotal = variantRows.length;
+        const controlConverted = controlRows.filter(r => Number(r[kpi]) > 0).length;
+        const variantConverted = variantRows.filter(r => Number(r[kpi]) > 0).length;
+        const controlCR = controlTotal ? (controlConverted / controlTotal) * 100 : 0;
+        const variantCR = variantTotal ? (variantConverted / variantTotal) * 100 : 0;
         const percentChange = controlCR !== 0 ? ((variantCR - controlCR) / controlCR) * 100 : 0;
         return {
           kpi,
-          controlCount,
-          variantCount,
+          controlSum,
+          variantSum,
           controlCR,
           variantCR,
           percentChange,
@@ -318,7 +320,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen flex flex-col justify-center items-center bg-background p-4">
-      <div className="flex flex-col items-center w-full max-w-xl">
+      <div className="flex flex-col items-center w-full max-w-5xl">
         {/* Stepper */}
         <div className="flex items-center gap-4 mb-12">
           {steps.map((label, idx) => (
@@ -466,7 +468,7 @@ export default function Home() {
                     </div>
                   )}
                   {kpiImpact.length > 0 && (
-                    <Card className="mb-6 max-w-3xl w-full mx-auto">
+                    <Card className="mb-6 max-w-5xl w-full mx-auto">
                       <CardHeader>
                         <CardTitle className="text-lg">KPI Impact Overview</CardTitle>
                       </CardHeader>
@@ -475,8 +477,8 @@ export default function Home() {
                           <thead>
                             <tr>
                               <th className="px-2 py-1 text-left">KPI</th>
-                              <th className="px-2 py-1 text-right">Control Count</th>
-                              <th className="px-2 py-1 text-right">Variant Count</th>
+                              <th className="px-2 py-1 text-right">Control Sum</th>
+                              <th className="px-2 py-1 text-right">Variant Sum</th>
                               <th className="px-2 py-1 text-right">Control CR</th>
                               <th className="px-2 py-1 text-right">Variant CR</th>
                               <th className="px-2 py-1 text-right">% Change</th>
@@ -486,8 +488,8 @@ export default function Home() {
                             {kpiImpact.map(row => (
                               <tr key={row.kpi}>
                                 <td className="px-2 py-1 font-medium">{row.kpi}</td>
-                                <td className="px-2 py-1 text-right">{row.controlCount}</td>
-                                <td className="px-2 py-1 text-right">{row.variantCount}</td>
+                                <td className="px-2 py-1 text-right">{row.controlSum}</td>
+                                <td className="px-2 py-1 text-right">{row.variantSum}</td>
                                 <td className="px-2 py-1 text-right">{row.controlCR.toFixed(2)}%</td>
                                 <td className="px-2 py-1 text-right">{row.variantCR.toFixed(2)}%</td>
                                 <td className={
