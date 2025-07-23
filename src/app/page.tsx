@@ -182,17 +182,20 @@ export default function Home() {
       const variantName = rows.find(r => r[variantColumn] !== controlName)?.[variantColumn] || 'Variant';
 
       function analyzeKpi(kpi: string): MannWhitneyResult {
-        // Drop rows with missing KPI or variant label — keep valid 0s
-        const validRows = rows.filter(r => r[kpi] !== undefined && r[kpi] !== null && r[variantColumn] !== undefined && r[variantColumn] !== null && r[kpi] !== '');
+        // Drop rows with missing KPI (keep real 0s)
+        const validRows = rows.filter(r => r[kpi] !== undefined && r[kpi] !== null && r[kpi] !== '' && r[variantColumn] !== undefined && r[variantColumn] !== null);
         const control = validRows.filter(r => String(r[variantColumn]) === controlName).map(r => Number(r[kpi]));
         const variant = validRows.filter(r => String(r[variantColumn]) !== controlName).map(r => Number(r[kpi]));
         // Remove NaNs from both groups (drop NaNs, keep 0s)
         const controlClean = control.filter(v => !Number.isNaN(v));
         const variantClean = variant.filter(v => !Number.isNaN(v));
-        const controlMedian = ss.median(controlClean);
-        const variantMedian = ss.median(variantClean);
         const controlMean = ss.mean(controlClean);
         const variantMean = ss.mean(variantClean);
+        const controlMedian = ss.median(controlClean);
+        const variantMedian = ss.median(variantClean);
+        // Mean-based percent lift
+        const mean_lift = controlMean !== 0 ? ((variantMean - controlMean) / controlMean) * 100 : Infinity;
+        const median_lift = controlMedian !== 0 ? ((variantMedian - controlMedian) / controlMedian) * 100 : Infinity;
         // Mann-Whitney U and normal approximation for p-value
         const u = ss.wilcoxonRankSum(controlClean, variantClean);
         const n1 = controlClean.length;
@@ -203,16 +206,14 @@ export default function Home() {
         const pValue = 2 * (1 - ss.cumulativeStdNormalProbability(Math.abs(z)));
         const significant = pValue < 0.05;
         const variant_better = variantMean > controlMean;
-        const median_lift = controlMedian !== 0 ? ((variantMedian - controlMedian) / controlMedian) * 100 : 0;
-        const mean_lift = controlMean !== 0 ? ((variantMean - controlMean) / controlMean) * 100 : 0;
         return {
           control_mean: Number(controlMean.toFixed(2)),
           variant_mean: Number(variantMean.toFixed(2)),
           control_median: Number(controlMedian.toFixed(2)),
           variant_median: Number(variantMedian.toFixed(2)),
-          estimated_lift_median: `${median_lift.toFixed(2)}%`,
-          estimated_lift_mean: `${mean_lift.toFixed(2)}%`,
-          p_value: pValue,
+          estimated_lift_mean: `${mean_lift === Infinity ? '∞' : mean_lift.toFixed(2)}%`,
+          estimated_lift_median: `${median_lift === Infinity ? '∞' : median_lift.toFixed(2)}%`,
+          p_value: Number(pValue.toFixed(6)),
           significant,
           variant_better,
         };
@@ -407,8 +408,7 @@ export default function Home() {
                         <div>
                           <span className="font-semibold">Split: </span>
                           <span>
-                            {Number(results.meta.split_control ?? 0)}% vs {Number(results.meta.split_variant ?? 0)}%{" "}
-                            <span className="text-muted-foreground">(expected 50/50)</span>
+                            Control: {results.meta.split_control ?? 0}% | Variant: {results.meta.split_variant ?? 0}% <span className="text-muted-foreground">(expected 50/50)</span>
                           </span>
                         </div>
                         <div>
@@ -451,7 +451,7 @@ export default function Home() {
                     <div className="grid grid-cols-2 gap-2 mt-4 text-sm">
                       <div><span className="font-medium">Control Median:</span> {results.primary_kpi.control_median}</div>
                       <div><span className="font-medium">Variant Median:</span> {results.primary_kpi.variant_median}</div>
-                      <div><span className="font-medium">Estimated Lift:</span>
+                      <div><span className="font-medium">Estimated Lift (Mean):</span>
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <span className="ml-1 cursor-help text-gray-500 underline decoration-dotted">
@@ -460,6 +460,18 @@ export default function Home() {
                           </TooltipTrigger>
                           <TooltipContent>
                             Based on means. Statistical significance tested using Mann-Whitney U test.
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <div><span className="font-medium">Estimated Lift (Median):</span>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="ml-1 cursor-help text-gray-500 underline decoration-dotted">
+                              {results.primary_kpi.estimated_lift_median}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            Based on medians. For transparency only; not used for significance.
                           </TooltipContent>
                         </Tooltip>
                       </div>
@@ -498,7 +510,7 @@ export default function Home() {
                               <div className="grid grid-cols-2 gap-2 mt-4 text-sm">
                                 <div><span className="font-medium">Control Median:</span> {res.control_median}</div>
                                 <div><span className="font-medium">Variant Median:</span> {res.variant_median}</div>
-                                <div><span className="font-medium">Estimated Lift:</span>
+                                <div><span className="font-medium">Estimated Lift (Mean):</span>
                                   <Tooltip>
                                     <TooltipTrigger asChild>
                                       <span className="ml-1 cursor-help text-gray-500 underline decoration-dotted">
@@ -507,6 +519,18 @@ export default function Home() {
                                     </TooltipTrigger>
                                     <TooltipContent>
                                       Based on means. Statistical significance tested using Mann-Whitney U test.
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </div>
+                                <div><span className="font-medium">Estimated Lift (Median):</span>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="ml-1 cursor-help text-gray-500 underline decoration-dotted">
+                                        {res.estimated_lift_median}
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      Based on medians. For transparency only; not used for significance.
                                     </TooltipContent>
                                   </Tooltip>
                                 </div>
