@@ -312,13 +312,6 @@ export default function Home() {
                       </span>
                     ) : "Next"}
                   </Button>
-                  {loading && (
-                    <div className="flex justify-center mt-4">
-                      <Loader2 className="animate-spin w-6 h-6 text-primary" />
-                      <span className="ml-2 text-primary">Processing CSV, please wait...</span>
-                    </div>
-                  )}
-                  {error && <div className="text-red-500 mt-4">{error}</div>}
                 </div>
               </CardContent>
             </Card>
