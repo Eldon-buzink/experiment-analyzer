@@ -180,8 +180,8 @@ export default function Home() {
       const variantName = rows.find(r => r[variantColumn] !== controlName)?.[variantColumn] || 'Variant';
 
       function analyzeKpi(kpi: string): MannWhitneyResult {
-        // Only use rows with valid KPI and variant label
-        const validRows = rows.filter(r => r[kpi] !== undefined && r[kpi] !== null && r[kpi] !== '' && r[variantColumn] !== undefined && r[variantColumn] !== null && r[variantColumn] !== '');
+        // Drop rows with missing KPI or variant label — keep valid 0s
+        const validRows = rows.filter(r => r[kpi] !== undefined && r[kpi] !== null && r[variantColumn] !== undefined && r[variantColumn] !== null);
         const control = validRows.filter(r => String(r[variantColumn]) === controlName).map(r => Number(r[kpi]));
         const variant = validRows.filter(r => String(r[variantColumn]) !== controlName).map(r => Number(r[kpi]));
         const controlMedian = ss.median(control);
@@ -197,7 +197,7 @@ export default function Home() {
         const z = sigma !== 0 ? (u - mu) / sigma : 0;
         const pValue = 2 * (1 - ss.cumulativeStdNormalProbability(Math.abs(z)));
         const significant = pValue < 0.05;
-        const variant_better = variantMedian > controlMedian;
+        const variant_better = variantMean > controlMean;
         const median_lift = controlMedian !== 0 ? ((variantMedian - controlMedian) / controlMedian) * 100 : 0;
         const mean_lift = controlMean !== 0 ? ((variantMean - controlMean) / controlMean) * 100 : 0;
         return {
