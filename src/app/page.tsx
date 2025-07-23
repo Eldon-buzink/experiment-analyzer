@@ -14,7 +14,7 @@ import { useDropzone } from "react-dropzone";
 import { Badge } from "@/components/ui/badge";
 import Papa from 'papaparse';
 import { supabase } from "@/lib/supabase";
-import ss from 'simple-statistics';
+import * as ss from 'simple-statistics';
 
 // Define types for KPI results and API response
 interface KpiResult {
@@ -159,8 +159,8 @@ export default function Home() {
         const controlMean = ss.mean(control);
         const variantMean = ss.mean(variant);
         const lift = controlMedian !== 0 ? ((variantMedian - controlMedian) / controlMedian) * 100 : 0;
-        // Use Mann-Whitney U and approximate p-value
-        const u = ss.mannWhitneyU(control, variant);
+        // Use Wilcoxon rank-sum (Mann-Whitney U) and approximate p-value
+        const u = ss.wilcoxonRankSum(control, variant);
         const n1 = control.length;
         const n2 = variant.length;
         const mu = (n1 * n2) / 2;
