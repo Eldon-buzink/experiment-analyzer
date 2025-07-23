@@ -34,13 +34,39 @@ interface ApiResults {
   secondary_kpis: Record<string, KpiResult>;
 }
 
+interface MannWhitneyResult {
+  control_mean: number;
+  variant_mean: number;
+  control_median: number;
+  variant_median: number;
+  percent_lift: string;
+  p_value: number;
+  significant: boolean;
+  variant_better: boolean;
+}
+
+interface AnalysisResult {
+  meta: {
+    control_name: string;
+    variant_name: string;
+    control_count: number;
+    variant_count: number;
+    test_name: string | null;
+    actual_split: number | null;
+    srm_detected: boolean | null;
+    srm_p_value: number | null;
+  };
+  primary_kpi: MannWhitneyResult;
+  secondary_kpis: Record<string, MannWhitneyResult>;
+}
+
 export default function Home() {
   const [step, setStep] = useState<number>(1);
   const [file, setFile] = useState<File | null>(null);
   const [kpis, setKpis] = useState<string[]>([]);
   const [primaryKpi, setPrimaryKpi] = useState<string>("");
   const [secondaryKpis, setSecondaryKpis] = useState<string[]>([]);
-  const [results, setResults] = useState<ApiResults | null>(null);
+  const [results, setResults] = useState<AnalysisResult | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>("");
 
@@ -181,7 +207,7 @@ export default function Home() {
       }
 
       const primaryResult = analyzeKpi(primaryKpi);
-      const secondaryResults: Record<string, any> = {};
+      const secondaryResults: Record<string, MannWhitneyResult> = {};
       for (const kpi of secondaryKpis) {
         if (kpi && kpi !== primaryKpi) {
           secondaryResults[kpi] = analyzeKpi(kpi);
@@ -194,6 +220,10 @@ export default function Home() {
           variant_name: variantName,
           control_count: rows.filter(r => String(r[variantColumn]) === controlName).length,
           variant_count: rows.filter(r => String(r[variantColumn]) !== controlName).length,
+          test_name: null,
+          actual_split: null,
+          srm_detected: null,
+          srm_p_value: null,
         },
         primary_kpi: primaryResult,
         secondary_kpis: secondaryResults,
@@ -400,7 +430,7 @@ export default function Home() {
                       <div className="font-semibold mb-2">Secondary KPI Results</div>
                       <div className="grid gap-6">
                         {Object.entries(results.secondary_kpis).map(
-                          ([kpi, res]: [string, KpiResult]) => (
+                          ([kpi, res]: [string, MannWhitneyResult]) => (
                             <div key={kpi} className="border rounded-lg p-4">
                               <div className="flex items-center gap-2 mb-2">
                                 <span className="font-medium">{kpi}</span>
