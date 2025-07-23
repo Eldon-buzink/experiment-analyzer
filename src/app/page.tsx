@@ -51,10 +51,10 @@ interface AnalysisResult {
     variant_name: string;
     control_count: number;
     variant_count: number;
-    test_name: string | null;
-    actual_split: number | null;
-    srm_detected: boolean | null;
-    srm_p_value: number | null;
+    test_name: string;
+    actual_split: string;
+    srm_detected: boolean;
+    srm_p_value: number;
   };
   primary_kpi: MannWhitneyResult;
   secondary_kpis: Record<string, MannWhitneyResult>;
@@ -220,10 +220,10 @@ export default function Home() {
           variant_name: variantName,
           control_count: rows.filter(r => String(r[variantColumn]) === controlName).length,
           variant_count: rows.filter(r => String(r[variantColumn]) !== controlName).length,
-          test_name: null,
-          actual_split: null,
-          srm_detected: null,
-          srm_p_value: null,
+          test_name: file?.name || 'Untitled Test',
+          actual_split: '50/50', // optionally calculate real split from counts
+          srm_detected: false,   // TODO: implement real SRM check later
+          srm_p_value: 1.0,      // TODO: real value goes here
         },
         primary_kpi: primaryResult,
         secondary_kpis: secondaryResults,
