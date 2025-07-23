@@ -9,15 +9,26 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@
 import { Checkbox } from '@/components/ui/checkbox'
 import { UploadIcon, Loader } from 'lucide-react'
 
+interface Result {
+  controlMedian: number;
+  variantMedian: number;
+  lift: number;
+  pValue: number;
+  srmDetected: boolean;
+  srmPValue: number;
+  controlUsers: number;
+  variantUsers: number;
+  variantName: string;
+}
+
 export default function ExperimentAnalyzer() {
-  const [step, setStep] = useState(1)
-  const [loading, setLoading] = useState(false)
-  const [csvData, setCsvData] = useState<any[]>([])
-  const [fileName, setFileName] = useState('')
-  const [primaryKpi, setPrimaryKpi] = useState('')
+  const [step, setStep] = useState<number>(1)
+  const [loading, setLoading] = useState<boolean>(false)
+  const [fileName, setFileName] = useState<string>('')
+  const [primaryKpi, setPrimaryKpi] = useState<string>('')
   const [secondaryKpis, setSecondaryKpis] = useState<string[]>([])
-  const [result, setResult] = useState<any | null>(null)
-  const [showError, setShowError] = useState(false)
+  const [result, setResult] = useState<Result | null>(null)
+  const [showError, setShowError] = useState<boolean>(false)
 
   const kpiOptions = ['pageviews', 'article_pageviews', 'plus_article_pageviews', 'sessions', 'session_duration', 'video_starts', 'audio_starts', 'game_starts']
 
@@ -27,9 +38,9 @@ export default function ExperimentAnalyzer() {
 
     const reader = new FileReader()
     reader.onload = () => {
-      const text = reader.result as string
-      const parsed = text.split('\n').map(line => line.split(','))
-      setCsvData(parsed)
+      // const text = reader.result as string
+      // const parsed = text.split('\n').map(line => line.split(','))
+      // CSV parsing logic can be added here if needed
       setLoading(false)
       setStep(2)
     }
@@ -172,9 +183,6 @@ export default function ExperimentAnalyzer() {
             <Button onClick={() => {
               setStep(1)
               setFileName('')
-              setCsvData([])
-              setPrimaryKpi('')
-              setSecondaryKpis([])
               setResult(null)
             }}>Analyze another file</Button>
           </div>
