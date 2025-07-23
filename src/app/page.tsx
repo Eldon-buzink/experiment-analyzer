@@ -59,6 +59,10 @@ interface AnalysisResult {
     split_variant: number | null;
     srm_detected: boolean;
     srm_p_value: number;
+    control_size: number;
+    variant_size: number;
+    control_zeros: number;
+    variant_zeros: number;
   };
   primary_kpi: MannWhitneyResult;
   secondary_kpis: Record<string, MannWhitneyResult>;
@@ -73,6 +77,8 @@ export default function Home() {
   const [results, setResults] = useState<AnalysisResult | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>("");
+  // Add state for debug panel
+  const [showDebug, setShowDebug] = useState<boolean>(false);
 
   // Drag & Drop logic
   const onDrop = React.useCallback((acceptedFiles: File[]) => {
@@ -181,7 +187,7 @@ export default function Home() {
       const controlName = 'Control';
       const variantName = rows.find(r => r[variantColumn] !== controlName)?.[variantColumn] || 'Variant';
 
-      function analyzeKpi(kpi: string): MannWhitneyResult {
+      function analyzeKpi(kpi: string): MannWhitneyResult & { debug: { controlSize: number, variantSize: number, controlZeros: number, variantZeros: number } } {
         // Drop rows with missing KPI (keep real 0s)
         const validRows = rows.filter(r => r[kpi] !== undefined && r[kpi] !== null && r[kpi] !== '' && r[variantColumn] !== undefined && r[variantColumn] !== null);
         const control = validRows.filter(r => String(r[variantColumn]) === controlName).map(r => Number(r[kpi]));
@@ -216,6 +222,12 @@ export default function Home() {
           p_value: Number(pValue.toFixed(6)),
           significant,
           variant_better,
+          debug: {
+            controlSize: controlClean.length,
+            variantSize: variantClean.length,
+            controlZeros: controlClean.filter((v: number) => v === 0).length,
+            variantZeros: variantClean.filter((v: number) => v === 0).length,
+          },
         };
       }
 
@@ -251,6 +263,10 @@ export default function Home() {
           })(),
           srm_detected: false,   // TODO: implement real SRM check later
           srm_p_value: 1.0,      // TODO: real value goes here
+          control_size: primaryResult.debug.controlSize,
+          variant_size: primaryResult.debug.variantSize,
+          control_zeros: primaryResult.debug.controlZeros,
+          variant_zeros: primaryResult.debug.variantZeros,
         },
         primary_kpi: primaryResult,
         secondary_kpis: secondaryResults,
@@ -538,6 +554,22 @@ export default function Home() {
                           )
                         )}
                       </div>
+                    </div>
+                  )}
+                  {/* Add a toggle button and debug panel */}
+                  {results && (
+                    <div className="mt-4">
+                      <Button variant="outline" size="sm" onClick={() => setShowDebug(d => !d)}>
+                        {showDebug ? 'Hide' : 'Show'} Debug Info
+                      </Button>
+                      {showDebug && (
+                        <div className="mt-2 p-3 border rounded bg-muted text-xs">
+                          <div>Control size: {results.meta.control_size}</div>
+                          <div>Variant size: {results.meta.variant_size}</div>
+                          <div>Control zeros: {results.meta.control_zeros}</div>
+                          <div>Variant zeros: {results.meta.variant_zeros}</div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
