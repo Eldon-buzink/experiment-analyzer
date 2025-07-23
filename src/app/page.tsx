@@ -68,10 +68,8 @@ export default function Home() {
   };
 
   // Replace handleUpload with Supabase upload/download logic
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const handleUpload = async () => {
     if (!file) return;
-
     setLoading(true);
     setError("");
     setResults(null);
@@ -112,7 +110,6 @@ export default function Home() {
           rows.some(row => !isNaN(Number(row[key])) && row[key] !== "" && row[key] !== null)
         );
         setKpis(numericColumns);
-        setFile(file);
         setStep(2);
         setLoading(false);
       },
@@ -191,7 +188,9 @@ export default function Home() {
               <CardContent>
                 <div>
                   <div {...getRootProps()} className={`border-2 border-dashed rounded-lg p-8 flex flex-col items-center justify-center cursor-pointer transition-colors ${isDragActive ? 'border-primary bg-accent/30' : 'border-muted'}`}>
-                    <input {...getInputProps()} onChange={handleUpload} />
+                    <input {...getInputProps()} onChange={(e) => {
+                      if (e.target.files?.[0]) setFile(e.target.files[0]);
+                    }} />
                     <span className="text-2xl mb-2">📂</span>
                     <span>{isDragActive ? "Drop the CSV here..." : "Drag & drop your CSV here, or click to browse"}</span>
                   </div>
@@ -201,7 +200,11 @@ export default function Home() {
                       <Button variant="outline" size="sm" onClick={() => setFile(null)} type="button">Remove</Button>
                     </div>
                   )}
-                  <Button className="mt-6 w-full" onClick={() => { document.getElementById('file-input')?.click(); }} disabled={!file || loading}>
+                  <Button
+                    className="mt-6 w-full"
+                    onClick={handleUpload}
+                    disabled={!file || loading}
+                  >
                     {loading ? "Uploading..." : "Next"}
                   </Button>
                   {error && <div className="text-red-500 mt-4">{error}</div>}
