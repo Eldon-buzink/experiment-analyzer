@@ -1,193 +1,516 @@
-"use client"
+"use client";
+import React, { useState } from "react";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+  CardFooter,
+} from "@/components/ui/card";
+import KPIBarChart from "@/components/KPIBarChart";
+import { useDropzone } from "react-dropzone";
+import { Badge } from "@/components/ui/badge";
+import Papa from 'papaparse';
+import { supabase } from "@/lib/supabase";
+import * as ss from 'simple-statistics';
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { Loader2 } from "lucide-react";
 
-import { useState } from 'react'
-import { Card } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Label } from '@/components/ui/label'
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
-import { Checkbox } from '@/components/ui/checkbox'
-import { UploadIcon, Loader } from 'lucide-react'
-
-interface Result {
-  controlMedian: number;
-  variantMedian: number;
-  lift: number;
-  pValue: number;
-  srmDetected: boolean;
-  srmPValue: number;
-  controlUsers: number;
-  variantUsers: number;
-  variantName: string;
+// Define types for KPI results and API response
+interface KpiResult {
+  control_mean: number;
+  variant_mean: number;
+  control_median: number;
+  variant_median: number;
+  percent_lift: string;
+  p_value: number;
+  significant: boolean;
+  variant_better: boolean;
 }
 
-export default function ExperimentAnalyzer() {
-  const [step, setStep] = useState<number>(1)
-  const [loading, setLoading] = useState<boolean>(false)
-  const [fileName, setFileName] = useState<string>('')
-  const [primaryKpi, setPrimaryKpi] = useState<string>('')
-  const [secondaryKpis, setSecondaryKpis] = useState<string[]>([])
-  const [result, setResult] = useState<Result | null>(null)
-  const [showError, setShowError] = useState<boolean>(false)
+interface ApiResults {
+  meta: Record<string, unknown>;
+  primary_kpi: KpiResult;
+  secondary_kpis: Record<string, KpiResult>;
+}
 
-  const kpiOptions = ['pageviews', 'article_pageviews', 'plus_article_pageviews', 'sessions', 'session_duration', 'video_starts', 'audio_starts', 'game_starts']
+interface MannWhitneyResult {
+  control_mean: number;
+  variant_mean: number;
+  control_median: number;
+  variant_median: number;
+  estimated_lift_median: string;
+  estimated_lift_mean: string;
+  p_value: number;
+  significant: boolean;
+  variant_better: boolean;
+}
 
-  function handleFileUpload(file: File) {
-    setLoading(true)
-    setFileName(file.name)
+interface AnalysisResult {
+  meta: {
+    control_name: string;
+    variant_name: string;
+    control_count: number;
+    variant_count: number;
+    test_name: string;
+    actual_split: string;
+    srm_detected: boolean;
+    srm_p_value: number;
+  };
+  primary_kpi: MannWhitneyResult;
+  secondary_kpis: Record<string, MannWhitneyResult>;
+}
 
-    const reader = new FileReader()
-    reader.onload = () => {
-      // const text = reader.result as string
-      // const parsed = text.split('\n').map(line => line.split(','))
-      // CSV parsing logic can be added here if needed
-      setLoading(false)
-      setStep(2)
+export default function Home() {
+  const [step, setStep] = useState<number>(1);
+  const [file, setFile] = useState<File | null>(null);
+  const [kpis, setKpis] = useState<string[]>([]);
+  const [primaryKpi, setPrimaryKpi] = useState<string>("");
+  const [secondaryKpis, setSecondaryKpis] = useState<string[]>([]);
+  const [results, setResults] = useState<AnalysisResult | null>(null);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string>("");
+
+  // Drag & Drop logic
+  const onDrop = React.useCallback((acceptedFiles: File[]) => {
+    if (acceptedFiles && acceptedFiles[0]) {
+      setFile(acceptedFiles[0]);
+      setKpis([]);
+      setPrimaryKpi("");
+      setSecondaryKpis([]);
+      setResults(null);
+      setError("");
     }
-    reader.readAsText(file)
-  }
+  }, []);
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop, accept: { 'text/csv': ['.csv'] } });
 
-  function toggleSecondaryKpi(kpi: string) {
-    setSecondaryKpis(prev =>
-      prev.includes(kpi) ? prev.filter(k => k !== kpi) : [...prev, kpi]
-    )
-  }
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setFile(e.target.files[0]);
+      setKpis([]);
+      setPrimaryKpi("");
+      setSecondaryKpis([]);
+      setResults(null);
+      setError("");
+    }
+  };
 
-  function handleAnalyze() {
-    if (!primaryKpi) {
-      setShowError(true)
-      return
+  // Replace handleUpload with Supabase upload/download logic
+  const handleUpload = async () => {
+    if (!file) return;
+    setLoading(true);
+    setError("");
+    setResults(null);
+
+    // Use supabase directly
+    const fileName = `${Date.now()}-${file.name}`;
+
+    const { data, error } = await supabase.storage
+      .from("csv-uploads")
+      .upload(fileName, file);
+
+    if (error) {
+      setError("Upload failed: " + error.message);
+      setLoading(false);
+      return;
     }
 
-    // Dummy result; replace with actual logic
-    setResult({
-      controlMedian: 8,
-      variantMedian: 8,
-      lift: 0,
-      pValue: 0.0020000000000000018,
-      srmDetected: false,
-      srmPValue: 1,
-      controlUsers: 25556,
-      variantUsers: 25429,
-      variantName: 'swapVideoDossier2',
-    })
-    setStep(3)
-  }
+    // Now download the file and parse it with PapaParse
+    const { data: downloadData, error: downloadError } = await supabase.storage
+      .from("csv-uploads")
+      .download(data.path);
+
+    if (downloadError || !downloadData) {
+      setError("Failed to download uploaded file");
+      setLoading(false);
+      return;
+    }
+
+    const text = await downloadData.text();
+
+    Papa.parse(text, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (result) => {
+        // Find numeric columns
+        const rows = result.data as Record<string, string>[];
+        const numericColumns = Object.keys(rows[0] || {}).filter(key =>
+          rows.some(row => !isNaN(Number(row[key])) && row[key] !== "" && row[key] !== null)
+        );
+        setKpis(numericColumns);
+        setStep(2);
+        setLoading(false);
+      },
+      error: (err: unknown) => {
+        setError("CSV parse error: " + (err instanceof Error ? err.message : String(err)));
+        setLoading(false);
+      }
+    });
+  };
+
+  const handlePrimaryKpiChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setPrimaryKpi(e.target.value);
+    setSecondaryKpis((prev) => prev.filter((kpi) => kpi !== e.target.value));
+  };
+
+  const handleSecondaryKpiChange = (kpi: string) => {
+    setSecondaryKpis((prev) =>
+      prev.includes(kpi)
+        ? prev.filter((item) => item !== kpi)
+        : [...prev, kpi]
+    );
+  };
+
+  // New: Send CSV string and KPI info to /api/analyze
+  const handleAnalyze = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!file || !primaryKpi) return;
+    setLoading(true);
+    setError("");
+    setResults(null);
+
+    try {
+      // Parse CSV again (or use already parsed rows if available)
+      const text = await file.text();
+      const parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
+      const rows = parsed.data as Record<string, string>[];
+      const variantColumn = 'Vwo Metrics per User Mart Test Variant';
+      const controlName = 'Control';
+      const variantName = rows.find(r => r[variantColumn] !== controlName)?.[variantColumn] || 'Variant';
+
+      function analyzeKpi(kpi: string): MannWhitneyResult {
+        // Drop rows with missing KPI or variant label — keep valid 0s
+        const validRows = rows.filter(r => r[kpi] !== undefined && r[kpi] !== null && r[variantColumn] !== undefined && r[variantColumn] !== null);
+        const control = validRows.filter(r => String(r[variantColumn]) === controlName).map(r => Number(r[kpi]));
+        const variant = validRows.filter(r => String(r[variantColumn]) !== controlName).map(r => Number(r[kpi]));
+        const controlMedian = ss.median(control);
+        const variantMedian = ss.median(variant);
+        const controlMean = ss.mean(control);
+        const variantMean = ss.mean(variant);
+        // Mann-Whitney U and normal approximation for p-value
+        const u = ss.wilcoxonRankSum(control, variant);
+        const n1 = control.length;
+        const n2 = variant.length;
+        const mu = (n1 * n2) / 2;
+        const sigma = Math.sqrt((n1 * n2 * (n1 + n2 + 1)) / 12);
+        const z = sigma !== 0 ? (u - mu) / sigma : 0;
+        const pValue = 2 * (1 - ss.cumulativeStdNormalProbability(Math.abs(z)));
+        const significant = pValue < 0.05;
+        const variant_better = variantMean > controlMean;
+        const median_lift = controlMedian !== 0 ? ((variantMedian - controlMedian) / controlMedian) * 100 : 0;
+        const mean_lift = controlMean !== 0 ? ((variantMean - controlMean) / controlMean) * 100 : 0;
+        return {
+          control_mean: Number(controlMean.toFixed(2)),
+          variant_mean: Number(variantMean.toFixed(2)),
+          control_median: Number(controlMedian.toFixed(2)),
+          variant_median: Number(variantMedian.toFixed(2)),
+          estimated_lift_median: `${median_lift.toFixed(2)}%`,
+          estimated_lift_mean: `${mean_lift.toFixed(2)}%`,
+          p_value: pValue,
+          significant,
+          variant_better,
+        };
+      }
+
+      const primaryResult = analyzeKpi(primaryKpi);
+      const secondaryResults: Record<string, MannWhitneyResult> = {};
+      for (const kpi of secondaryKpis) {
+        if (kpi && kpi !== primaryKpi) {
+          secondaryResults[kpi] = analyzeKpi(kpi);
+        }
+      }
+
+      setResults({
+        meta: {
+          control_name: controlName,
+          variant_name: variantName,
+          control_count: rows.filter(r => String(r[variantColumn]) === controlName).length,
+          variant_count: rows.filter(r => String(r[variantColumn]) !== controlName).length,
+          test_name: file?.name || 'Untitled Test',
+          actual_split: '50/50', // optionally calculate real split from counts
+          srm_detected: false,   // TODO: implement real SRM check later
+          srm_p_value: 1.0,      // TODO: real value goes here
+        },
+        primary_kpi: primaryResult,
+        secondary_kpis: secondaryResults,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Analysis failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Stepper component
+  const steps = ["Upload CSV", "Select KPIs", "Results"];
 
   return (
-    <main className="max-w-xl mx-auto mt-10 px-4">
-      {step === 1 && (
-        <Card className="p-6">
-          <h2 className="text-xl font-semibold mb-4">Experiment Analyzer</h2>
-          <label className="border-dashed border-2 border-gray-300 rounded-md flex flex-col items-center justify-center h-40 cursor-pointer hover:border-primary transition-colors">
-            <UploadIcon className="w-8 h-8 text-muted-foreground mb-2" />
-            <p className="text-sm text-muted-foreground">Drag & drop your CSV here, or click to browse</p>
-            <input
-              type="file"
-              accept=".csv"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0]
-                if (file) handleFileUpload(file)
-              }}
-            />
-          </label>
-          <Button className="mt-6 w-full" disabled={loading}>
-            {loading && <Loader className="mr-2 h-4 w-4 animate-spin" />}
-            {loading ? 'Processing...' : 'Next'}
-          </Button>
-        </Card>
-      )}
-
-      {step === 2 && (
-        <Card className="p-6">
-          <h2 className="text-xl font-semibold mb-4">Experiment Analyzer</h2>
-
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="primary-kpi">Primary KPI <span className="text-red-500">*</span></Label>
-              <Select onValueChange={(val) => { setPrimaryKpi(val); setShowError(false) }}>
-                <SelectTrigger className="w-full mt-2">
-                  <SelectValue placeholder="Select primary KPI" />
-                </SelectTrigger>
-                <SelectContent>
-                  {kpiOptions.map(kpi => (
-                    <SelectItem key={kpi} value={kpi}>{kpi}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {showError && !primaryKpi && (
-                <p className="text-sm text-red-500 mt-1">Primary KPI is required</p>
-              )}
-            </div>
-
-            <div>
-              <Label>Secondary KPIs</Label>
-              <div className="grid grid-cols-2 gap-2 mt-2">
-                {kpiOptions.map(kpi => (
-                  <div key={kpi} className="flex items-center space-x-2">
-                    <Checkbox
-                      id={kpi}
-                      checked={secondaryKpis.includes(kpi)}
-                      onCheckedChange={() => toggleSecondaryKpi(kpi)}
-                    />
-                    <Label htmlFor={kpi} className="text-sm">{kpi}</Label>
-                  </div>
-                ))}
+    <div className="min-h-screen flex flex-col justify-center items-center bg-background p-4">
+      <div className="flex flex-col items-center w-full max-w-xl">
+        {/* Stepper */}
+        <div className="flex items-center gap-4 mb-12">
+          {steps.map((label, idx) => (
+            <React.Fragment key={label}>
+              <div className={`flex flex-col items-center ${step === idx + 1 ? 'font-bold text-primary' : 'text-muted-foreground'}`}>
+                <div className={`rounded-full w-8 h-8 flex items-center justify-center border-2 ${step === idx + 1 ? 'border-primary' : 'border-muted-foreground'}`}>{idx + 1}</div>
+                <span className="text-xs mt-1">{label}</span>
               </div>
-            </div>
+              {idx < steps.length - 1 && <div className="w-8 h-0.5 bg-muted-foreground" />}
+            </React.Fragment>
+          ))}
+        </div>
+        {step === 1 ? (
+          <div className="w-full mt-12">
+            <Card className="w-full">
+              <CardHeader>
+                <CardTitle className="text-center font-bold text-2xl font-sans">Experiment Analyzer</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div>
+                  <div {...getRootProps()} className={`border-2 border-dashed rounded-lg p-8 flex flex-col items-center justify-center cursor-pointer transition-colors ${isDragActive ? 'border-primary bg-accent/30' : 'border-muted'}`}>
+                    <input {...getInputProps()} onChange={(e) => {
+                      if (e.target.files?.[0]) setFile(e.target.files[0]);
+                    }} />
+                    <span className="text-2xl mb-2">📂</span>
+                    <span>{isDragActive ? "Drop the CSV here..." : "Drag & drop your CSV here, or click to browse"}</span>
+                  </div>
+                  {file && (
+                    <div className="flex items-center gap-2 mt-4">
+                      <span className="text-sm font-medium">{file.name}</span>
+                      <Button variant="outline" size="sm" onClick={() => setFile(null)} type="button">Remove</Button>
+                    </div>
+                  )}
+                  <Button
+                    className="mt-6 w-full"
+                    onClick={handleUpload}
+                    disabled={!file || loading}
+                  >
+                    {loading ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <Loader2 className="animate-spin w-4 h-4" /> Processing...
+                      </span>
+                    ) : "Next"}
+                  </Button>
+                  {loading && (
+                    <div className="flex justify-center mt-4">
+                      <Loader2 className="animate-spin w-6 h-6 text-primary" />
+                      <span className="ml-2 text-primary">Processing CSV, please wait...</span>
+                    </div>
+                  )}
+                  {error && <div className="text-red-500 mt-4">{error}</div>}
+                </div>
+              </CardContent>
+            </Card>
           </div>
-
-          <div className="flex justify-between mt-6">
-            <Button variant="outline" onClick={() => setStep(1)}>Back</Button>
-            <Button onClick={handleAnalyze}>Next</Button>
-          </div>
-        </Card>
-      )}
-
-      {step === 3 && result && (
-        <Card className="p-6">
-          <h2 className="text-xl font-semibold mb-4">Experiment Analyzer</h2>
-
-          <div className="space-y-1 mb-4">
-            <p><strong>Test Name:</strong> {fileName}</p>
-            <p><strong>Variants:</strong></p>
-            <ul className="list-disc ml-5 text-sm">
-              <li>Control: {result.controlUsers} users</li>
-              <li>{result.variantName}: {result.variantUsers} users</li>
-            </ul>
-            <p><strong>Split:</strong> NaN% vs NaN% (expected 50/50)</p>
-            <p><strong>SRM Detected:</strong> <Badge variant={result.srmDetected ? 'destructive' : 'default'}>{result.srmDetected ? 'Yes' : 'No'}</Badge> (p = {result.srmPValue})</p>
-          </div>
-
-          <div className="border-t pt-4 mt-4">
-            <h3 className="font-medium mb-2">Primary KPI: {primaryKpi}
-              <Badge className="ml-2" variant="default">Significant</Badge>
-            </h3>
-            <p className="text-sm text-muted-foreground mb-2">Variant ≤ Control</p>
-
-            <div className="my-4 h-32 bg-gray-100 rounded-md flex items-center justify-center">
-              [ Chart Placeholder ]
-            </div>
-
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <p><strong>Control Median:</strong> {result.controlMedian}</p>
-              <p><strong>Variant Median:</strong> {result.variantMedian}</p>
-              <p><strong>Estimated Lift:</strong> {result.lift}%</p>
-              <p><strong>p-value:</strong> {result.pValue}</p>
-            </div>
-          </div>
-
-          <div className="flex justify-between mt-6">
-            <Button variant="outline" onClick={() => setStep(2)}>Back</Button>
-            <Button onClick={() => {
-              setStep(1)
-              setFileName('')
-              setResult(null)
-            }}>Analyze another file</Button>
-          </div>
-        </Card>
-      )}
-    </main>
-  )
+        ) : (
+          <Card className="w-full">
+            <CardHeader>
+              <CardTitle className="text-center font-bold text-2xl font-sans">Experiment Analyzer</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {/* Step 2: KPI Selection */}
+              {step === 2 && kpis.length > 0 && (
+                <form onSubmit={async (e) => { await handleAnalyze(e); if (!error) setStep(3); }} className="flex flex-col gap-4">
+                  <div>
+                    <label className="font-medium">Primary KPI</label>
+                    <select
+                      className="w-full mt-1 p-2 border rounded-md"
+                      value={primaryKpi}
+                      onChange={handlePrimaryKpiChange}
+                      required
+                    >
+                      <option value="" disabled>
+                        Select primary KPI
+                      </option>
+                      {kpis.map((kpi) => (
+                        <option key={kpi} value={kpi}>
+                          {kpi}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="font-medium">Secondary KPIs</label>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-2">
+                      {kpis
+                        .filter((kpi) => kpi !== primaryKpi)
+                        .map((kpi) => (
+                          <label key={kpi} className="flex items-center gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={secondaryKpis.includes(kpi)}
+                              onChange={() => handleSecondaryKpiChange(kpi)}
+                            />
+                            {kpi}
+                          </label>
+                        ))}
+                    </div>
+                  </div>
+                  <div className="flex gap-2 mt-4">
+                    <Button type="button" variant="outline" onClick={() => setStep(1)}>
+                      Back
+                    </Button>
+                    <Button type="submit" disabled={!primaryKpi || loading}>
+                      {loading ? "Analyzing..." : "Next"}
+                    </Button>
+                  </div>
+                  {error && <div className="text-red-500 mt-4">{error}</div>}
+                </form>
+              )}
+              {/* Step 3: Results */}
+              {step === 3 && results && (
+                <div>
+                  {results.meta && (
+                    <div className="bg-white border border-muted rounded-xl p-8 mb-6 shadow-sm">
+                      <div className="flex items-center gap-2 mb-4">
+                        <span className="text-2xl">🧪</span>
+                        <h2 className="text-lg font-bold">Test Overview</h2>
+                      </div>
+                      <div className="space-y-3 leading-relaxed">
+                        <div>
+                          <span className="font-semibold">Test Name: </span>
+                          <span className="font-mono break-all">{String(results.meta.test_name ?? "")}</span>
+                        </div>
+                        <div>
+                          <span className="font-semibold">Variants:</span>
+                          <div className="ml-4 mt-1 space-y-1">
+                            <div>
+                              <span className="font-medium">{String(results.meta.control_name ?? "Control")}: </span>
+                              <span>{Number(results.meta.control_count ?? 0)} users</span>
+                            </div>
+                            <div>
+                              <span className="font-medium">{String(results.meta.variant_name ?? "Variant")}: </span>
+                              <span>{Number(results.meta.variant_count ?? 0)} users</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div>
+                          <span className="font-semibold">Split: </span>
+                          <span>
+                            {Number(results.meta.actual_split ?? 0)}% vs {100 - Number(results.meta.actual_split ?? 0)}%{" "}
+                            <span className="text-muted-foreground">(expected 50/50)</span>
+                          </span>
+                        </div>
+                        <div>
+                          <span className="font-semibold">SRM Detected: </span>
+                          <span className={`ml-2 px-2 py-1 rounded text-white ${results.meta.srm_detected ? "bg-red-500" : "bg-green-500"}`}>
+                            {results.meta.srm_detected ? "⚠️ Yes" : "✅ No"}
+                          </span>
+                          <span className="ml-2 text-muted-foreground">(p = {Number(results.meta.srm_p_value ?? 0)})</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex gap-2 mb-4">
+                    <Button type="button" variant="outline" onClick={() => setStep(2)}>
+                      Back
+                    </Button>
+                    <Button type="button" onClick={() => { setStep(1); setFile(null); setResults(null); }}>
+                      Analyze another file
+                    </Button>
+                  </div>
+                  {/* Primary KPI Result Card */}
+                  <div className="mb-6 w-full">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="font-semibold">Primary KPI:</span>
+                      <span>{primaryKpi}</span>
+                      <Badge variant={results.primary_kpi.significant ? "default" : "outline"} className={results.primary_kpi.significant ? "bg-green-500 text-white" : "bg-gray-200 text-gray-700"}>
+                        {results.primary_kpi.significant ? "Significant" : "Not Significant"}
+                      </Badge>
+                      {typeof results.primary_kpi.variant_better === 'boolean' && (
+                        <span className={results.primary_kpi.variant_better ? "text-green-600 ml-2" : "text-red-600 ml-2"}>
+                          {results.primary_kpi.variant_better ? "Variant > Control" : "Variant ≤ Control"}
+                        </span>
+                      )}
+                    </div>
+                    <KPIBarChart
+                      kpi={primaryKpi}
+                      controlMean={results.primary_kpi.control_median}
+                      variantMean={results.primary_kpi.variant_median}
+                    />
+                    <div className="grid grid-cols-2 gap-2 mt-4 text-sm">
+                      <div><span className="font-medium">Control Median:</span> {results.primary_kpi.control_median}</div>
+                      <div><span className="font-medium">Variant Median:</span> {results.primary_kpi.variant_median}</div>
+                      <div><span className="font-medium">Estimated Lift:</span>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="ml-1 cursor-help text-gray-500 underline decoration-dotted">
+                              {results.primary_kpi.estimated_lift_mean}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            Based on means. Statistical significance tested using Mann-Whitney U test.
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <div><span className="font-medium">p-value:</span> {results.primary_kpi.p_value}</div>
+                    </div>
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      {results.primary_kpi.significant
+                        ? "The difference is statistically significant."
+                        : "No significant difference detected."}
+                    </div>
+                  </div>
+                  {/* Secondary KPI Results */}
+                  {results.secondary_kpis && Object.keys(results.secondary_kpis).length > 0 && (
+                    <div>
+                      <div className="font-semibold mb-2">Secondary KPI Results</div>
+                      <div className="grid gap-6">
+                        {Object.entries(results.secondary_kpis).map(
+                          ([kpi, res]: [string, MannWhitneyResult]) => (
+                            <div key={kpi} className="border rounded-lg p-4">
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className="font-medium">{kpi}</span>
+                                <Badge variant={res.significant ? "default" : "outline"} className={res.significant ? "bg-green-500 text-white" : "bg-gray-200 text-gray-700"}>
+                                  {res.significant ? "Significant" : "Not Significant"}
+                                </Badge>
+                                {typeof res.variant_better === 'boolean' && (
+                                  <span className={res.variant_better ? "text-green-600 ml-2" : "text-red-600 ml-2"}>
+                                    {res.variant_better ? "Variant > Control" : "Variant ≤ Control"}
+                                  </span>
+                                )}
+                              </div>
+                              <KPIBarChart
+                                kpi={kpi}
+                                controlMean={res.control_median}
+                                variantMean={res.variant_median}
+                              />
+                              <div className="grid grid-cols-2 gap-2 mt-4 text-sm">
+                                <div><span className="font-medium">Control Median:</span> {res.control_median}</div>
+                                <div><span className="font-medium">Variant Median:</span> {res.variant_median}</div>
+                                <div><span className="font-medium">Estimated Lift:</span>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="ml-1 cursor-help text-gray-500 underline decoration-dotted">
+                                        {res.estimated_lift_mean}
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      Based on means. Statistical significance tested using Mann-Whitney U test.
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </div>
+                                <div><span className="font-medium">p-value:</span> {res.p_value}</div>
+                              </div>
+                              <div className="mt-2 text-xs text-muted-foreground">
+                                {res.significant
+                                  ? "The difference is statistically significant."
+                                  : "No significant difference detected."}
+                              </div>
+                            </div>
+                          )
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </div>
+  );
 }
