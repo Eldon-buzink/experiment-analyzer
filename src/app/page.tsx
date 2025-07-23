@@ -55,7 +55,8 @@ interface AnalysisResult {
     control_count: number;
     variant_count: number;
     test_name: string;
-    actual_split: string;
+    split_control: number | null;
+    split_variant: number | null;
     srm_detected: boolean;
     srm_p_value: number;
   };
@@ -232,15 +233,20 @@ export default function Home() {
           control_count: rows.filter(r => String(r[variantColumn]) === controlName).length,
           variant_count: rows.filter(r => String(r[variantColumn]) !== controlName).length,
           test_name: file?.name || 'Untitled Test',
-          // Calculate actual split
-          actual_split: (() => {
+          // Calculate split as two separate fields
+          split_control: (() => {
             const controlCount = rows.filter(r => String(r[variantColumn]) === controlName).length;
             const variantCount = rows.filter(r => String(r[variantColumn]) !== controlName).length;
             const total = controlCount + variantCount;
-            if (total === 0) return '0/0';
-            const controlPct = ((controlCount / total) * 100).toFixed(2);
-            const variantPct = ((variantCount / total) * 100).toFixed(2);
-            return `${controlPct}% vs ${variantPct}%`;
+            if (total === 0) return null;
+            return Number(((controlCount / total) * 100).toFixed(2));
+          })(),
+          split_variant: (() => {
+            const controlCount = rows.filter(r => String(r[variantColumn]) === controlName).length;
+            const variantCount = rows.filter(r => String(r[variantColumn]) !== controlName).length;
+            const total = controlCount + variantCount;
+            if (total === 0) return null;
+            return Number(((variantCount / total) * 100).toFixed(2));
           })(),
           srm_detected: false,   // TODO: implement real SRM check later
           srm_p_value: 1.0,      // TODO: real value goes here
@@ -401,7 +407,7 @@ export default function Home() {
                         <div>
                           <span className="font-semibold">Split: </span>
                           <span>
-                            {Number(results.meta.actual_split ?? 0)}% vs {100 - Number(results.meta.actual_split ?? 0)}%{" "}
+                            {Number(results.meta.split_control ?? 0)}% vs {Number(results.meta.split_variant ?? 0)}%{" "}
                             <span className="text-muted-foreground">(expected 50/50)</span>
                           </span>
                         </div>
