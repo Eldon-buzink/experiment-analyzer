@@ -254,12 +254,14 @@ export default function Home() {
       const impactRows: KpiImpactRow[] = kpis.map(kpi => {
         const controlRows = rows.filter(r => String(r[variantColumn]) === controlName);
         const variantRows = rows.filter(r => String(r[variantColumn]) !== controlName);
-        const controlCount = controlRows.filter(r => r[kpi] !== undefined && r[kpi] !== null && r[kpi] !== '').length;
-        const variantCount = variantRows.filter(r => r[kpi] !== undefined && r[kpi] !== null && r[kpi] !== '').length;
-        const controlConverted = controlRows.filter(r => Number(r[kpi]) > 0).length;
-        const variantConverted = variantRows.filter(r => Number(r[kpi]) > 0).length;
-        const controlCR = controlCount ? (controlConverted / controlCount) * 100 : 0;
-        const variantCR = variantCount ? (variantConverted / variantCount) * 100 : 0;
+        // Count users with value > 0 (event count)
+        const controlCount = controlRows.filter(r => Number(r[kpi]) > 0).length;
+        const variantCount = variantRows.filter(r => Number(r[kpi]) > 0).length;
+        // Conversion rate: event count / total users in variant
+        const controlTotal = controlRows.filter(r => r[kpi] !== undefined && r[kpi] !== null && r[kpi] !== '').length;
+        const variantTotal = variantRows.filter(r => r[kpi] !== undefined && r[kpi] !== null && r[kpi] !== '').length;
+        const controlCR = controlTotal ? (controlCount / controlTotal) * 100 : 0;
+        const variantCR = variantTotal ? (variantCount / variantTotal) * 100 : 0;
         const percentChange = controlCR !== 0 ? ((variantCR - controlCR) / controlCR) * 100 : 0;
         return {
           kpi,
@@ -464,42 +466,40 @@ export default function Home() {
                     </div>
                   )}
                   {kpiImpact.length > 0 && (
-                    <Card className="mb-6">
+                    <Card className="mb-6 max-w-3xl w-full mx-auto">
                       <CardHeader>
                         <CardTitle className="text-lg">KPI Impact Overview</CardTitle>
                       </CardHeader>
                       <CardContent>
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-sm border rounded-lg">
-                            <thead>
-                              <tr>
-                                <th className="px-2 py-1 text-left">KPI</th>
-                                <th className="px-2 py-1 text-right">Control Count</th>
-                                <th className="px-2 py-1 text-right">Variant Count</th>
-                                <th className="px-2 py-1 text-right">Control CR</th>
-                                <th className="px-2 py-1 text-right">Variant CR</th>
-                                <th className="px-2 py-1 text-right">% Change</th>
+                        <table className="w-full text-sm border rounded-lg">
+                          <thead>
+                            <tr>
+                              <th className="px-2 py-1 text-left">KPI</th>
+                              <th className="px-2 py-1 text-right">Control Count</th>
+                              <th className="px-2 py-1 text-right">Variant Count</th>
+                              <th className="px-2 py-1 text-right">Control CR</th>
+                              <th className="px-2 py-1 text-right">Variant CR</th>
+                              <th className="px-2 py-1 text-right">% Change</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {kpiImpact.map(row => (
+                              <tr key={row.kpi}>
+                                <td className="px-2 py-1 font-medium">{row.kpi}</td>
+                                <td className="px-2 py-1 text-right">{row.controlCount}</td>
+                                <td className="px-2 py-1 text-right">{row.variantCount}</td>
+                                <td className="px-2 py-1 text-right">{row.controlCR.toFixed(2)}%</td>
+                                <td className="px-2 py-1 text-right">{row.variantCR.toFixed(2)}%</td>
+                                <td className={
+                                  'px-2 py-1 text-right ' +
+                                  (row.percentChange > 0 ? 'text-green-600' : row.percentChange < 0 ? 'text-red-600' : 'text-gray-600')
+                                }>
+                                  {row.percentChange.toFixed(2)}%
+                                </td>
                               </tr>
-                            </thead>
-                            <tbody>
-                              {kpiImpact.map(row => (
-                                <tr key={row.kpi}>
-                                  <td className="px-2 py-1 font-medium">{row.kpi}</td>
-                                  <td className="px-2 py-1 text-right">{row.controlCount}</td>
-                                  <td className="px-2 py-1 text-right">{row.variantCount}</td>
-                                  <td className="px-2 py-1 text-right">{row.controlCR.toFixed(2)}%</td>
-                                  <td className="px-2 py-1 text-right">{row.variantCR.toFixed(2)}%</td>
-                                  <td className={
-                                    'px-2 py-1 text-right ' +
-                                    (row.percentChange > 0 ? 'text-green-600' : row.percentChange < 0 ? 'text-red-600' : 'text-gray-600')
-                                  }>
-                                    {row.percentChange.toFixed(2)}%
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
+                            ))}
+                          </tbody>
+                        </table>
                       </CardContent>
                     </Card>
                   )}
