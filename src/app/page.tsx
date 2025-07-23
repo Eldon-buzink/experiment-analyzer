@@ -68,6 +68,16 @@ interface AnalysisResult {
   secondary_kpis: Record<string, MannWhitneyResult>;
 }
 
+// Add type for KPI impact row
+interface KpiImpactRow {
+  kpi: string;
+  controlCount: number;
+  variantCount: number;
+  controlCR: number;
+  variantCR: number;
+  percentChange: number;
+}
+
 export default function Home() {
   const [step, setStep] = useState<number>(1);
   const [file, setFile] = useState<File | null>(null);
@@ -79,6 +89,8 @@ export default function Home() {
   const [error, setError] = useState<string>("");
   // Add state for debug panel
   const [showDebug, setShowDebug] = useState<boolean>(false);
+  // Add state for KPI impact overview
+  const [kpiImpact, setKpiImpact] = useState<KpiImpactRow[]>([]);
 
   // Drag & Drop logic
   const onDrop = React.useCallback((acceptedFiles: File[]) => {
@@ -238,6 +250,27 @@ export default function Home() {
           secondaryResults[kpi] = analyzeKpi(kpi);
         }
       }
+
+      const impactRows: KpiImpactRow[] = kpis.map(kpi => {
+        const controlRows = rows.filter(r => String(r[variantColumn]) === controlName);
+        const variantRows = rows.filter(r => String(r[variantColumn]) !== controlName);
+        const controlCount = controlRows.filter(r => r[kpi] !== undefined && r[kpi] !== null && r[kpi] !== '').length;
+        const variantCount = variantRows.filter(r => r[kpi] !== undefined && r[kpi] !== null && r[kpi] !== '').length;
+        const controlConverted = controlRows.filter(r => Number(r[kpi]) > 0).length;
+        const variantConverted = variantRows.filter(r => Number(r[kpi]) > 0).length;
+        const controlCR = controlCount ? (controlConverted / controlCount) * 100 : 0;
+        const variantCR = variantCount ? (variantConverted / variantCount) * 100 : 0;
+        const percentChange = controlCR !== 0 ? ((variantCR - controlCR) / controlCR) * 100 : 0;
+        return {
+          kpi,
+          controlCount,
+          variantCount,
+          controlCR,
+          variantCR,
+          percentChange,
+        };
+      });
+      setKpiImpact(impactRows);
 
       setResults({
         meta: {
@@ -429,6 +462,46 @@ export default function Home() {
                         </div>
                       </div>
                     </div>
+                  )}
+                  {kpiImpact.length > 0 && (
+                    <Card className="mb-6">
+                      <CardHeader>
+                        <CardTitle className="text-lg">KPI Impact Overview</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm border rounded-lg">
+                            <thead>
+                              <tr>
+                                <th className="px-2 py-1 text-left">KPI</th>
+                                <th className="px-2 py-1 text-right">Control Count</th>
+                                <th className="px-2 py-1 text-right">Variant Count</th>
+                                <th className="px-2 py-1 text-right">Control CR</th>
+                                <th className="px-2 py-1 text-right">Variant CR</th>
+                                <th className="px-2 py-1 text-right">% Change</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {kpiImpact.map(row => (
+                                <tr key={row.kpi}>
+                                  <td className="px-2 py-1 font-medium">{row.kpi}</td>
+                                  <td className="px-2 py-1 text-right">{row.controlCount}</td>
+                                  <td className="px-2 py-1 text-right">{row.variantCount}</td>
+                                  <td className="px-2 py-1 text-right">{row.controlCR.toFixed(2)}%</td>
+                                  <td className="px-2 py-1 text-right">{row.variantCR.toFixed(2)}%</td>
+                                  <td className={
+                                    'px-2 py-1 text-right ' +
+                                    (row.percentChange > 0 ? 'text-green-600' : row.percentChange < 0 ? 'text-red-600' : 'text-gray-600')
+                                  }>
+                                    {row.percentChange.toFixed(2)}%
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </CardContent>
+                    </Card>
                   )}
                   <div className="flex gap-2 mb-4">
                     <Button type="button" variant="outline" onClick={() => setStep(2)}>
