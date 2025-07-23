@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import Papa from 'papaparse';
 import { supabase } from "@/lib/supabase";
 import * as ss from 'simple-statistics';
+import { Tooltip } from "@/components/ui/tooltip";
 
 // Define types for KPI results and API response
 interface KpiResult {
@@ -421,7 +422,13 @@ export default function Home() {
                     <div className="grid grid-cols-2 gap-2 mt-4 text-sm">
                       <div><span className="font-medium">Control Median:</span> {results.primary_kpi.control_median}</div>
                       <div><span className="font-medium">Variant Median:</span> {results.primary_kpi.variant_median}</div>
-                      <div><span className="font-medium">Estimated Lift:</span> {results.primary_kpi.estimated_lift_median}</div>
+                      <div><span className="font-medium">Estimated Lift:</span>
+                        <Tooltip content="Based on means. Statistical significance tested using Mann-Whitney U test.">
+                          <span className="ml-1 cursor-help text-gray-500 underline decoration-dotted">
+                            {results.primary_kpi.estimated_lift_mean}
+                          </span>
+                        </Tooltip>
+                      </div>
                       <div><span className="font-medium">p-value:</span> {results.primary_kpi.p_value}</div>
                     </div>
                     <div className="mt-2 text-xs text-muted-foreground">
@@ -457,7 +464,13 @@ export default function Home() {
                               <div className="grid grid-cols-2 gap-2 mt-4 text-sm">
                                 <div><span className="font-medium">Control Median:</span> {res.control_median}</div>
                                 <div><span className="font-medium">Variant Median:</span> {res.variant_median}</div>
-                                <div><span className="font-medium">Estimated Lift:</span> {res.estimated_lift_median}</div>
+                                <div><span className="font-medium">Estimated Lift:</span>
+                                  <Tooltip content="Based on means. Statistical significance tested using Mann-Whitney U test.">
+                                    <span className="ml-1 cursor-help text-gray-500 underline decoration-dotted">
+                                      {res.estimated_lift_mean}
+                                    </span>
+                                  </Tooltip>
+                                </div>
                                 <div><span className="font-medium">p-value:</span> {res.p_value}</div>
                               </div>
                               <div className="mt-2 text-xs text-muted-foreground">
