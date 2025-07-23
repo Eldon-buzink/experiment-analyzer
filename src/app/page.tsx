@@ -13,7 +13,7 @@ import KPIBarChart from "@/components/KPIBarChart";
 import { useDropzone } from "react-dropzone";
 import { Badge } from "@/components/ui/badge";
 import Papa from 'papaparse';
-import { getSupabaseClient } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 
 // Define types for KPI results and API response
 interface KpiResult {
@@ -74,7 +74,7 @@ export default function Home() {
     setError("");
     setResults(null);
 
-    const supabase = getSupabaseClient();
+    // Use supabase directly
     const fileName = `${Date.now()}-${file.name}`;
 
     const { data, error } = await supabase.storage
