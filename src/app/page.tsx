@@ -14,6 +14,7 @@ import { useDropzone } from "react-dropzone";
 import { Badge } from "@/components/ui/badge";
 import Papa from 'papaparse';
 import { supabase } from "@/lib/supabase";
+import ss from 'simple-statistics';
 
 // Define types for KPI results and API response
 interface KpiResult {
@@ -140,22 +141,65 @@ export default function Home() {
     setLoading(true);
     setError("");
     setResults(null);
+
     try {
-      const csv = await file.text();
-      const res = await fetch("/api/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          csv,
-          primary_kpi: primaryKpi,
-          secondary_kpis: secondaryKpis.join(","),
-        }),
+      // Parse CSV again (or use already parsed rows if available)
+      const text = await file.text();
+      const parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
+      const rows = parsed.data as Record<string, string>[];
+      const variantColumn = 'Vwo Metrics per User Mart Test Variant';
+      const controlName = 'Control';
+      const variantName = rows.find(r => r[variantColumn] !== controlName)?.[variantColumn] || 'Variant';
+
+      function analyzeKpi(kpi: string) {
+        const control = rows.filter(r => String(r[variantColumn]) === controlName).map(r => Number(r[kpi]) || 0);
+        const variant = rows.filter(r => String(r[variantColumn]) !== controlName).map(r => Number(r[kpi]) || 0);
+        const controlMedian = ss.median(control);
+        const variantMedian = ss.median(variant);
+        const controlMean = ss.mean(control);
+        const variantMean = ss.mean(variant);
+        const lift = controlMedian !== 0 ? ((variantMedian - controlMedian) / controlMedian) * 100 : 0;
+        // Use Mann-Whitney U and approximate p-value
+        const u = ss.mannWhitneyU(control, variant);
+        const n1 = control.length;
+        const n2 = variant.length;
+        const mu = (n1 * n2) / 2;
+        const sigma = Math.sqrt((n1 * n2 * (n1 + n2 + 1)) / 12);
+        const z = sigma !== 0 ? (u - mu) / sigma : 0;
+        const pValue = 2 * (1 - ss.cumulativeStdNormalProbability(Math.abs(z)));
+        const significant = pValue < 0.05;
+        return {
+          control_mean: Number(controlMean.toFixed(2)),
+          variant_mean: Number(variantMean.toFixed(2)),
+          control_median: Number(controlMedian.toFixed(2)),
+          variant_median: Number(variantMedian.toFixed(2)),
+          percent_lift: `${lift.toFixed(2)}%`,
+          p_value: Number(pValue.toFixed(4)),
+          significant,
+          variant_better: variantMedian > controlMedian,
+        };
+      }
+
+      const primaryResult = analyzeKpi(primaryKpi);
+      const secondaryResults: Record<string, any> = {};
+      for (const kpi of secondaryKpis) {
+        if (kpi && kpi !== primaryKpi) {
+          secondaryResults[kpi] = analyzeKpi(kpi);
+        }
+      }
+
+      setResults({
+        meta: {
+          control_name: controlName,
+          variant_name: variantName,
+          control_count: rows.filter(r => String(r[variantColumn]) === controlName).length,
+          variant_count: rows.filter(r => String(r[variantColumn]) !== controlName).length,
+        },
+        primary_kpi: primaryResult,
+        secondary_kpis: secondaryResults,
       });
-      if (!res.ok) throw new Error("Failed to analyze data");
-      const data: ApiResults = await res.json();
-      setResults(data);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Analysis failed");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Analysis failed');
     } finally {
       setLoading(false);
     }
