@@ -182,17 +182,20 @@ export default function Home() {
 
       function analyzeKpi(kpi: string): MannWhitneyResult {
         // Drop rows with missing KPI or variant label — keep valid 0s
-        const validRows = rows.filter(r => r[kpi] !== undefined && r[kpi] !== null && r[variantColumn] !== undefined && r[variantColumn] !== null);
+        const validRows = rows.filter(r => r[kpi] !== undefined && r[kpi] !== null && r[variantColumn] !== undefined && r[variantColumn] !== null && r[kpi] !== '');
         const control = validRows.filter(r => String(r[variantColumn]) === controlName).map(r => Number(r[kpi]));
         const variant = validRows.filter(r => String(r[variantColumn]) !== controlName).map(r => Number(r[kpi]));
-        const controlMedian = ss.median(control);
-        const variantMedian = ss.median(variant);
-        const controlMean = ss.mean(control);
-        const variantMean = ss.mean(variant);
+        // Remove NaNs from both groups (drop NaNs, keep 0s)
+        const controlClean = control.filter(v => !Number.isNaN(v));
+        const variantClean = variant.filter(v => !Number.isNaN(v));
+        const controlMedian = ss.median(controlClean);
+        const variantMedian = ss.median(variantClean);
+        const controlMean = ss.mean(controlClean);
+        const variantMean = ss.mean(variantClean);
         // Mann-Whitney U and normal approximation for p-value
-        const u = ss.wilcoxonRankSum(control, variant);
-        const n1 = control.length;
-        const n2 = variant.length;
+        const u = ss.wilcoxonRankSum(controlClean, variantClean);
+        const n1 = controlClean.length;
+        const n2 = variantClean.length;
         const mu = (n1 * n2) / 2;
         const sigma = Math.sqrt((n1 * n2 * (n1 + n2 + 1)) / 12);
         const z = sigma !== 0 ? (u - mu) / sigma : 0;
@@ -229,7 +232,16 @@ export default function Home() {
           control_count: rows.filter(r => String(r[variantColumn]) === controlName).length,
           variant_count: rows.filter(r => String(r[variantColumn]) !== controlName).length,
           test_name: file?.name || 'Untitled Test',
-          actual_split: '50/50', // optionally calculate real split from counts
+          // Calculate actual split
+          actual_split: (() => {
+            const controlCount = rows.filter(r => String(r[variantColumn]) === controlName).length;
+            const variantCount = rows.filter(r => String(r[variantColumn]) !== controlName).length;
+            const total = controlCount + variantCount;
+            if (total === 0) return '0/0';
+            const controlPct = ((controlCount / total) * 100).toFixed(2);
+            const variantPct = ((variantCount / total) * 100).toFixed(2);
+            return `${controlPct}% vs ${variantPct}%`;
+          })(),
           srm_detected: false,   // TODO: implement real SRM check later
           srm_p_value: 1.0,      // TODO: real value goes here
         },
