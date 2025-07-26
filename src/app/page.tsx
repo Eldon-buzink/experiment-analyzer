@@ -91,6 +91,8 @@ export default function Home() {
   const [showDebug, setShowDebug] = useState<boolean>(false);
   // Add state for KPI impact overview
   const [kpiImpact, setKpiImpact] = useState<KpiImpactRow[]>([]);
+  // Add state for debug info
+  const [debugInfo, setDebugInfo] = useState<{nullsA: number, zerosA: number, nullsB: number, zerosB: number} | null>(null);
 
   // Drag & Drop logic
   const onDrop = React.useCallback((acceptedFiles: File[]) => {
@@ -251,20 +253,52 @@ export default function Home() {
         }
       }
 
+      // In handleAnalyze or analyzeKpi, update KPI calculations to exclude zeros
       const impactRows: KpiImpactRow[] = kpis.map(kpi => {
         const controlRows = rows.filter(r => String(r[variantColumn]) === controlName);
         const variantRows = rows.filter(r => String(r[variantColumn]) !== controlName);
-        // Sum of KPI values
-        const controlSum = controlRows.reduce((sum, r) => sum + (Number(r[kpi]) || 0), 0);
-        const variantSum = variantRows.reduce((sum, r) => sum + (Number(r[kpi]) || 0), 0);
-        // CR: users with value > 0 / total users in variant group
-        const controlTotal = controlRows.length;
-        const variantTotal = variantRows.length;
-        const controlConverted = controlRows.filter(r => Number(r[kpi]) > 0).length;
-        const variantConverted = variantRows.filter(r => Number(r[kpi]) > 0).length;
+        // Convert to numbers, log nulls and zeros
+        const setA_raw = controlRows.map(r => r[kpi]);
+        const setB_raw = variantRows.map(r => r[kpi]);
+        const nullsA = setA_raw.filter(v => v === null || v === undefined || v === '').length;
+        const nullsB = setB_raw.filter(v => v === null || v === undefined || v === '').length;
+        const setA = setA_raw.map(v => Number(v)).map(v => isNaN(v) ? 0 : v);
+        const setB = setB_raw.map(v => Number(v)).map(v => isNaN(v) ? 0 : v);
+        const zerosA = setA.filter(v => v === 0).length;
+        const zerosB = setB.filter(v => v === 0).length;
+        // Exclude zeros for analysis
+        const setA_no_zeros = setA.filter(v => v !== 0);
+        const setB_no_zeros = setB.filter(v => v !== 0);
+        // Log diagnostics
+        if (kpi === primaryKpi) {
+          console.log(`Set A (Control) - NULLs: ${nullsA}, Zeros: ${zerosA}`);
+          console.log(`Set B (Variant) - NULLs: ${nullsB}, Zeros: ${zerosB}`);
+        }
+        // Sum of KPI values (all data)
+        const controlSum = setA.reduce((sum, v) => sum + v, 0);
+        const variantSum = setB.reduce((sum, v) => sum + v, 0);
+        // CR: users with value > 0 / total users in variant group (all data)
+        const controlTotal = setA.length;
+        const variantTotal = setB.length;
+        const controlConverted = setA.filter(v => v > 0).length;
+        const variantConverted = setB.filter(v => v > 0).length;
         const controlCR = controlTotal ? (controlConverted / controlTotal) * 100 : 0;
         const variantCR = variantTotal ? (variantConverted / variantTotal) * 100 : 0;
         const percentChange = controlCR !== 0 ? ((variantCR - controlCR) / controlCR) * 100 : 0;
+        // Means, medians, percent impact (non-zero data only)
+        const avgA = setA_no_zeros.length ? ss.mean(setA_no_zeros) : 0;
+        const avgB = setB_no_zeros.length ? ss.mean(setB_no_zeros) : 0;
+        const percentImpact = avgA !== 0 ? ((avgB - avgA) / avgA) * 100 : 0;
+        const medA = setA_no_zeros.length ? ss.median(setA_no_zeros) : 0;
+        const medB = setB_no_zeros.length ? ss.median(setB_no_zeros) : 0;
+        // Mann-Whitney U test (non-zero data only)
+        let pValue = null;
+        let significant = false;
+        if (setA_no_zeros.length > 0 && setB_no_zeros.length > 0) {
+          pValue = ss.wilcoxonRankSum(setA_no_zeros, setB_no_zeros);
+          significant = pValue < 0.1;
+        }
+        // Return for table (table still shows sum/CR for all, but means/medians/p-value for non-zero)
         return {
           kpi,
           controlSum,
@@ -272,6 +306,13 @@ export default function Home() {
           controlCR,
           variantCR,
           percentChange,
+          avgA,
+          avgB,
+          percentImpact,
+          medA,
+          medB,
+          pValue,
+          significant,
         };
       });
       setKpiImpact(impactRows);
@@ -308,6 +349,19 @@ export default function Home() {
         primary_kpi: primaryResult,
         secondary_kpis: secondaryResults,
       });
+      if (primaryKpi) {
+        const controlRows = rows.filter(r => String(r[variantColumn]) === controlName);
+        const variantRows = rows.filter(r => String(r[variantColumn]) !== controlName);
+        const setA_raw = controlRows.map(r => r[primaryKpi]);
+        const setB_raw = variantRows.map(r => r[primaryKpi]);
+        const nullsA = setA_raw.filter(v => v === null || v === undefined || v === '').length;
+        const nullsB = setB_raw.filter(v => v === null || v === undefined || v === '').length;
+        const setA = setA_raw.map(v => Number(v)).map(v => isNaN(v) ? 0 : v);
+        const setB = setB_raw.map(v => Number(v)).map(v => isNaN(v) ? 0 : v);
+        const zerosA = setA.filter(v => v === 0).length;
+        const zerosB = setB.filter(v => v === 0).length;
+        setDebugInfo({ nullsA, zerosA, nullsB, zerosB });
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Analysis failed');
     } finally {
@@ -645,6 +699,13 @@ export default function Home() {
                           <div>Variant zeros: {results.meta.variant_zeros}</div>
                         </div>
                       )}
+                    </div>
+                  )}
+                  {debugInfo && (
+                    <div className="border rounded p-4 my-4 bg-muted text-sm space-y-2 max-w-xl mx-auto">
+                      <div className="font-semibold">Debug Info (Primary KPI)</div>
+                      <div>Control - NULLs: {debugInfo.nullsA}, Zeros: {debugInfo.zerosA}</div>
+                      <div>Variant - NULLs: {debugInfo.nullsB}, Zeros: {debugInfo.zerosB}</div>
                     </div>
                   )}
                 </div>
