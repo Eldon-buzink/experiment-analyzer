@@ -106,6 +106,7 @@ export default function Home() {
     setLoading(true);
     setError("");
     setResults(null);
+    setParsingProgress(0);
 
     // Check file size and warn if very large
     const fileSizeMB = file.size / (1024 * 1024);
@@ -114,46 +115,110 @@ export default function Home() {
       // Continue anyway, but warn the user
     }
 
+    // Set a timeout for very large files (10 minutes)
+    const timeoutId = setTimeout(() => {
+      if (loading) {
+        setError("File processing is taking longer than expected. Please try with a smaller file or check if the file is corrupted.");
+        setLoading(false);
+        setParsingProgress(0);
+      }
+    }, 10 * 60 * 1000); // 10 minutes
+
     try {
-      // Parse CSV directly in the browser
-      Papa.parse(file, {
-        header: true,
-        skipEmptyLines: true,
-        preview: 1000, // Preview first 1000 rows to get column names quickly
-        step: () => {
-          // Update progress indicator for large files
-          if (fileSizeMB > 10) {
-            // Simple progress indicator for large files
-            setParsingProgress(prev => Math.min(95, prev + 1));
-          }
-        },
-        complete: (result) => {
-          if (result.errors.length > 0) {
-            console.warn('CSV parsing warnings:', result.errors);
-            // Continue with partial data if there are minor errors
-          }
+      // For very large files, use a different approach
+      if (fileSizeMB > 50) {
+        // Use FileReader to read the file in chunks
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const text = e.target?.result as string;
+          setParsingProgress(50); // File read complete
           
-          // Store parsed data for later use
-          const rows = result.data as Record<string, string>[];
-          setParsedData(rows);
-          
-          // Find numeric columns
-          const numericColumns = Object.keys(rows[0] || {}).filter(key =>
-            rows.some(row => !isNaN(Number(row[key])) && row[key] !== "" && row[key] !== null)
-          );
-          
-          setKpis(numericColumns);
-          setStep(2);
+          // Parse the CSV with better progress tracking
+          Papa.parse(text, {
+            header: true,
+            skipEmptyLines: true,
+            chunk: () => {
+              // Simple progress increment for large files
+              setParsingProgress(prev => Math.min(90, prev + 5));
+            },
+            complete: (result) => {
+              clearTimeout(timeoutId);
+              if (result.errors.length > 0) {
+                console.warn('CSV parsing warnings:', result.errors);
+              }
+              
+              setParsingProgress(95);
+              
+              // Store parsed data for later use
+              const rows = result.data as Record<string, string>[];
+              setParsedData(rows);
+              
+              // Find numeric columns
+              const numericColumns = Object.keys(rows[0] || {}).filter(key =>
+                rows.some(row => !isNaN(Number(row[key])) && row[key] !== "" && row[key] !== null)
+              );
+              
+              setKpis(numericColumns);
+              setStep(2);
+              setLoading(false);
+              setParsingProgress(0);
+            },
+            error: (err: unknown) => {
+              clearTimeout(timeoutId);
+              setError("CSV parse error: " + (err instanceof Error ? err.message : String(err)));
+              setLoading(false);
+              setParsingProgress(0);
+            }
+          });
+        };
+        
+        reader.onerror = () => {
+          clearTimeout(timeoutId);
+          setError("Failed to read file");
           setLoading(false);
           setParsingProgress(0);
-        },
-        error: (err: unknown) => {
-          setError("CSV parse error: " + (err instanceof Error ? err.message : String(err)));
-          setLoading(false);
-          setParsingProgress(0);
-        }
-      });
+        };
+        
+        reader.readAsText(file);
+      } else {
+        // For smaller files, use the direct approach
+        Papa.parse(file, {
+          header: true,
+          skipEmptyLines: true,
+          chunk: () => {
+            // Simple progress increment for smaller files too
+            setParsingProgress(prev => Math.min(90, prev + 2));
+          },
+          complete: (result) => {
+            clearTimeout(timeoutId);
+            if (result.errors.length > 0) {
+              console.warn('CSV parsing warnings:', result.errors);
+            }
+            
+            // Store parsed data for later use
+            const rows = result.data as Record<string, string>[];
+            setParsedData(rows);
+            
+            // Find numeric columns
+            const numericColumns = Object.keys(rows[0] || {}).filter(key =>
+              rows.some(row => !isNaN(Number(row[key])) && row[key] !== "" && row[key] !== null)
+            );
+            
+            setKpis(numericColumns);
+            setStep(2);
+            setLoading(false);
+            setParsingProgress(0);
+          },
+          error: (err: unknown) => {
+            clearTimeout(timeoutId);
+            setError("CSV parse error: " + (err instanceof Error ? err.message : String(err)));
+            setLoading(false);
+            setParsingProgress(0);
+          }
+        });
+      }
     } catch (error) {
+      clearTimeout(timeoutId);
       setError("Failed to read file: " + (error instanceof Error ? error.message : String(error)));
       setLoading(false);
       setParsingProgress(0);
