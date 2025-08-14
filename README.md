@@ -1,36 +1,65 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Experiment Results Analyzer
 
-## Getting Started
+A web-based tool for analyzing A/B test results from CSV files. This tool performs statistical analysis using Mann-Whitney U tests to compare control and variant groups.
 
-First, run the development server:
+## Features
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- **Client-side CSV parsing** - No file upload limits, processes files directly in the browser
+- **Progress indicators** - Shows parsing progress for large files
+- **Statistical analysis** - Mann-Whitney U tests with p-values and significance testing
+- **Multiple KPI support** - Analyze primary and secondary metrics
+- **Sample Ratio Mismatch (SRM) detection** - Identifies potential issues with test allocation
+- **Interactive charts** - Visual representation of results
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## How it works
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. **File Upload**: Drag and drop your CSV file or click to browse
+2. **KPI Selection**: Choose your primary KPI and optional secondary KPIs
+3. **Analysis**: The tool automatically analyzes your data and presents results
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## File Requirements
 
-## Learn More
+- **Format**: CSV files only
+- **Required Columns**: 
+  - `Vwo Metrics per User Mart Test Variant` - Contains "Control" and variant names
+  - `Vwo Metrics per User Mart Test ID` - Test identifier
+- **Data**: Numeric KPI columns for analysis
 
-To learn more about Next.js, take a look at the following resources:
+## Large File Support
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+This tool is designed to handle large files that exceed typical upload limits:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- **Client-side processing**: Files are parsed directly in your browser
+- **Progress tracking**: Shows parsing progress for files over 10MB
+- **Memory efficient**: Uses streaming parsing for optimal performance
+- **No server storage**: Your data never leaves your device
 
-## Deploy on Vercel
+## Technical Details
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- **Frontend**: Next.js with TypeScript and Tailwind CSS
+- **CSV Parsing**: PapaParse for efficient client-side parsing
+- **Statistics**: Simple-statistics library for Mann-Whitney U tests
+- **Charts**: Chart.js for data visualization
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Installation
+
+1. Clone the repository
+2. Install dependencies: `npm install`
+3. Run the development server: `npm run dev`
+4. Open [http://localhost:3000](http://localhost:3000)
+
+## Usage
+
+1. Prepare your CSV file with the required columns
+2. Upload the file using drag & drop or file browser
+3. Select your primary KPI from the dropdown
+4. Optionally select secondary KPIs for additional analysis
+5. Review the results including:
+   - Test overview and sample sizes
+   - Statistical significance and p-values
+   - Percent lift calculations
+   - Sample ratio mismatch detection
+
+## Privacy
+
+Your data is processed entirely in your browser and never uploaded to any server. This ensures complete privacy and eliminates concerns about data storage or transfer limits.

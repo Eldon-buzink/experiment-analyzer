@@ -1,40 +1,25 @@
 "use client";
 import React, { useState } from "react";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
   Card,
   CardHeader,
   CardTitle,
   CardContent,
-  CardFooter,
 } from "@/components/ui/card";
 import KPIBarChart from "@/components/KPIBarChart";
 import { useDropzone } from "react-dropzone";
 import { Badge } from "@/components/ui/badge";
 import Papa from 'papaparse';
-import { supabase } from "@/lib/supabase";
 import * as ss from 'simple-statistics';
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { Loader2 } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
 
 // Define types for KPI results and API response
-interface KpiResult {
-  control_mean: number;
-  variant_mean: number;
-  control_median: number;
-  variant_median: number;
-  percent_lift: string;
-  p_value: number;
-  significant: boolean;
-  variant_better: boolean;
-}
 
-interface ApiResults {
-  meta: Record<string, unknown>;
-  primary_kpi: KpiResult;
-  secondary_kpis: Record<string, KpiResult>;
-}
+
+
 
 interface MannWhitneyResult {
   control_mean: number;
@@ -93,6 +78,10 @@ export default function Home() {
   const [kpiImpact, setKpiImpact] = useState<KpiImpactRow[]>([]);
   // Add state for debug info
   const [debugInfo, setDebugInfo] = useState<{nullsA: number, zerosA: number, nullsB: number, zerosB: number} | null>(null);
+  // Add state to store parsed CSV data
+  const [parsedData, setParsedData] = useState<Record<string, string>[]>([]);
+  // Add state for parsing progress
+  const [parsingProgress, setParsingProgress] = useState<number>(0);
 
   // Drag & Drop logic
   const onDrop = React.useCallback((acceptedFiles: File[]) => {
@@ -103,72 +92,72 @@ export default function Home() {
       setSecondaryKpis([]);
       setResults(null);
       setError("");
+      setParsedData([]);
+      setParsingProgress(0);
     }
   }, []);
   const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop, accept: { 'text/csv': ['.csv'] } });
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setFile(e.target.files[0]);
-      setKpis([]);
-      setPrimaryKpi("");
-      setSecondaryKpis([]);
-      setResults(null);
-      setError("");
-    }
-  };
 
-  // Replace handleUpload with Supabase upload/download logic
+
+  // Replace handleUpload with direct client-side parsing
   const handleUpload = async () => {
     if (!file) return;
     setLoading(true);
     setError("");
     setResults(null);
 
-    // Use supabase directly
-    const fileName = `${Date.now()}-${file.name}`;
-
-    const { data, error } = await supabase.storage
-      .from("csv-uploads")
-      .upload(fileName, file);
-
-    if (error) {
-      setError("Upload failed: " + error.message);
-      setLoading(false);
-      return;
+    // Check file size and warn if very large
+    const fileSizeMB = file.size / (1024 * 1024);
+    if (fileSizeMB > 100) {
+      setError(`File is very large (${fileSizeMB.toFixed(1)}MB). This may take a while to process.`);
+      // Continue anyway, but warn the user
     }
 
-    // Now download the file and parse it with PapaParse
-    const { data: downloadData, error: downloadError } = await supabase.storage
-      .from("csv-uploads")
-      .download(data.path);
-
-    if (downloadError || !downloadData) {
-      setError("Failed to download uploaded file");
+    try {
+      // Parse CSV directly in the browser
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        preview: 1000, // Preview first 1000 rows to get column names quickly
+        step: () => {
+          // Update progress indicator for large files
+          if (fileSizeMB > 10) {
+            // Simple progress indicator for large files
+            setParsingProgress(prev => Math.min(95, prev + 1));
+          }
+        },
+        complete: (result) => {
+          if (result.errors.length > 0) {
+            console.warn('CSV parsing warnings:', result.errors);
+            // Continue with partial data if there are minor errors
+          }
+          
+          // Store parsed data for later use
+          const rows = result.data as Record<string, string>[];
+          setParsedData(rows);
+          
+          // Find numeric columns
+          const numericColumns = Object.keys(rows[0] || {}).filter(key =>
+            rows.some(row => !isNaN(Number(row[key])) && row[key] !== "" && row[key] !== null)
+          );
+          
+          setKpis(numericColumns);
+          setStep(2);
+          setLoading(false);
+          setParsingProgress(0);
+        },
+        error: (err: unknown) => {
+          setError("CSV parse error: " + (err instanceof Error ? err.message : String(err)));
+          setLoading(false);
+          setParsingProgress(0);
+        }
+      });
+    } catch (error) {
+      setError("Failed to read file: " + (error instanceof Error ? error.message : String(error)));
       setLoading(false);
-      return;
+      setParsingProgress(0);
     }
-
-    const text = await downloadData.text();
-
-    Papa.parse(text, {
-      header: true,
-      skipEmptyLines: true,
-      complete: (result) => {
-        // Find numeric columns
-        const rows = result.data as Record<string, string>[];
-        const numericColumns = Object.keys(rows[0] || {}).filter(key =>
-          rows.some(row => !isNaN(Number(row[key])) && row[key] !== "" && row[key] !== null)
-        );
-        setKpis(numericColumns);
-        setStep(2);
-        setLoading(false);
-      },
-      error: (err: unknown) => {
-        setError("CSV parse error: " + (err instanceof Error ? err.message : String(err)));
-        setLoading(false);
-      }
-    });
   };
 
   const handlePrimaryKpiChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -184,19 +173,17 @@ export default function Home() {
     );
   };
 
-  // New: Send CSV string and KPI info to /api/analyze
+  // New: Analyze the parsed CSV data
   const handleAnalyze = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!file || !primaryKpi) return;
+    if (!parsedData.length || !primaryKpi) return;
     setLoading(true);
     setError("");
     setResults(null);
 
     try {
-      // Parse CSV again (or use already parsed rows if available)
-      const text = await file.text();
-      const parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
-      const rows = parsed.data as Record<string, string>[];
+      // Use the already parsed data
+      const rows = parsedData;
       const variantColumn = 'Vwo Metrics per User Mart Test Variant';
       const controlName = 'Control';
       const variantName = rows.find(r => r[variantColumn] !== controlName)?.[variantColumn] || 'Variant';
@@ -403,9 +390,26 @@ export default function Home() {
                     <span>{isDragActive ? "Drop the CSV here..." : "Drag & drop your CSV here, or click to browse"}</span>
                   </div>
                   {file && (
-                    <div className="flex items-center gap-2 mt-4">
-                      <span className="text-sm font-medium">{file.name}</span>
-                      <Button variant="outline" size="sm" onClick={() => setFile(null)} type="button">Remove</Button>
+                    <div className="mt-4 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">{file.name}</span>
+                        <Button variant="outline" size="sm" onClick={() => setFile(null)} type="button">Remove</Button>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        File size: {(file.size / (1024 * 1024)).toFixed(1)}MB
+                        {file.size > 50 * 1024 * 1024 && (
+                          <span className="text-amber-600 ml-2">⚠️ Large file - may take longer to process</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {loading && parsingProgress > 0 && (
+                    <div className="mt-4">
+                      <div className="flex justify-between text-sm text-muted-foreground mb-2">
+                        <span>Parsing CSV file...</span>
+                        <span>{parsingProgress}%</span>
+                      </div>
+                      <Progress value={parsingProgress} className="w-full" />
                     </div>
                   )}
                   <Button
