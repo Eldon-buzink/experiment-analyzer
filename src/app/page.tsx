@@ -131,18 +131,22 @@ export default function Home() {
         const reader = new FileReader();
         reader.onload = (e) => {
           const text = e.target?.result as string;
+          console.log('File read complete, size:', text.length, 'characters');
           setParsingProgress(50); // File read complete
           
           // Parse the CSV with better progress tracking
+          console.log('Starting CSV parsing...');
           Papa.parse(text, {
             header: true,
             skipEmptyLines: true,
-            chunk: () => {
+            chunk: (results: Papa.ParseResult<unknown>) => {
               // Simple progress increment for large files
+              console.log('Chunk processed, rows:', results.data.length);
               setParsingProgress(prev => Math.min(90, prev + 5));
             },
             complete: (result) => {
               clearTimeout(timeoutId);
+              console.log('CSV parsing complete, total rows:', result.data.length);
               if (result.errors.length > 0) {
                 console.warn('CSV parsing warnings:', result.errors);
               }
@@ -158,6 +162,7 @@ export default function Home() {
                 rows.some(row => !isNaN(Number(row[key])) && row[key] !== "" && row[key] !== null)
               );
               
+              console.log('Numeric columns found:', numericColumns.length);
               setKpis(numericColumns);
               setStep(2);
               setLoading(false);
@@ -165,9 +170,51 @@ export default function Home() {
             },
             error: (err: unknown) => {
               clearTimeout(timeoutId);
-              setError("CSV parse error: " + (err instanceof Error ? err.message : String(err)));
-              setLoading(false);
-              setParsingProgress(0);
+              console.error('CSV parsing error:', err);
+              
+              // Try fallback parsing with different settings
+              console.log('Trying fallback parsing method...');
+              Papa.parse(text, {
+                header: true,
+                skipEmptyLines: true,
+                dynamicTyping: false,
+                transform: (value: string) => value.trim(),
+                chunk: (results: Papa.ParseResult<unknown>) => {
+                  console.log('Fallback chunk processed, rows:', results.data.length);
+                  setParsingProgress(prev => Math.min(90, prev + 5));
+                },
+                complete: (result) => {
+                  clearTimeout(timeoutId);
+                  console.log('Fallback CSV parsing complete, total rows:', result.data.length);
+                  if (result.errors.length > 0) {
+                    console.warn('Fallback CSV parsing warnings:', result.errors);
+                  }
+                  
+                  setParsingProgress(95);
+                  
+                  // Store parsed data for later use
+                  const rows = result.data as Record<string, string>[];
+                  setParsedData(rows);
+                  
+                  // Find numeric columns
+                  const numericColumns = Object.keys(rows[0] || {}).filter(key =>
+                    rows.some(row => !isNaN(Number(row[key])) && row[key] !== "" && row[key] !== null)
+                  );
+                  
+                  console.log('Numeric columns found:', numericColumns.length);
+                  setKpis(numericColumns);
+                  setStep(2);
+                  setLoading(false);
+                  setParsingProgress(0);
+                },
+                error: (fallbackErr: unknown) => {
+                  clearTimeout(timeoutId);
+                  console.error('Fallback CSV parsing also failed:', fallbackErr);
+                  setError("CSV parse error: " + (err instanceof Error ? err.message : String(err)) + ". File may be corrupted or in an unsupported format.");
+                  setLoading(false);
+                  setParsingProgress(0);
+                }
+              });
             }
           });
         };
