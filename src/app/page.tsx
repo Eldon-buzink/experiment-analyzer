@@ -391,6 +391,7 @@ export default function Home() {
   // New: Analyze the parsed CSV data
   const handleAnalyze = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    console.log('=== NEW VERSION OF handleAnalyze ===');
     console.log('handleAnalyze called with:', { parsedDataLength: parsedData.length, primaryKpi });
     if (!parsedData.length || !primaryKpi) {
       console.log('Early return - missing data or primaryKpi');
