@@ -403,18 +403,56 @@ export default function Home() {
     try {
       // Use the already parsed data
       const rows = parsedData;
-      const variantColumn = 'Vwo Metrics per User Mart Test Variant';
+      console.log('Available columns:', Object.keys(rows[0] || {}));
+      
+      // Try to find the variant column dynamically
+      const possibleVariantColumns = [
+        'Vwo Metrics per User Mart Test Variant',
+        'variant',
+        'Variant',
+        'test_variant',
+        'Test Variant',
+        'group',
+        'Group',
+        'treatment',
+        'Treatment'
+      ];
+      
+      let variantColumn = 'Vwo Metrics per User Mart Test Variant'; // default
+      for (const col of possibleVariantColumns) {
+        if (rows[0] && rows[0][col] !== undefined) {
+          variantColumn = col;
+          console.log(`Found variant column: ${variantColumn}`);
+          break;
+        }
+      }
+      
       const controlName = 'Control';
       const variantName = rows.find(r => r[variantColumn] !== controlName)?.[variantColumn] || 'Variant';
+      console.log(`Using variant column: ${variantColumn}, control name: ${controlName}, variant name: ${variantName}`);
 
       function analyzeKpi(kpi: string): MannWhitneyResult & { debug: { controlSize: number, variantSize: number, controlZeros: number, variantZeros: number } } {
+        console.log(`Analyzing KPI: ${kpi}`);
+        console.log(`Total rows: ${rows.length}`);
+        console.log(`Variant column: ${variantColumn}`);
+        
         // Drop rows with missing KPI (keep real 0s)
         const validRows = rows.filter(r => r[kpi] !== undefined && r[kpi] !== null && r[kpi] !== '' && r[variantColumn] !== undefined && r[variantColumn] !== null);
+        console.log(`Valid rows after KPI and variant filtering: ${validRows.length}`);
+        
         const control = validRows.filter(r => String(r[variantColumn]) === controlName).map(r => Number(r[kpi]));
         const variant = validRows.filter(r => String(r[variantColumn]) !== controlName).map(r => Number(r[kpi]));
+        console.log(`Control group size: ${control.length}, Variant group size: ${variant.length}`);
+        
         // Remove NaNs from both groups (drop NaNs, keep 0s)
         const controlClean = control.filter(v => !Number.isNaN(v));
         const variantClean = variant.filter(v => !Number.isNaN(v));
+        console.log(`Control clean size: ${controlClean.length}, Variant clean size: ${variantClean.length}`);
+        
+        if (controlClean.length === 0 || variantClean.length === 0) {
+          console.error(`No valid data for KPI ${kpi}: control=${controlClean.length}, variant=${variantClean.length}`);
+          throw new Error(`No valid data found for KPI "${kpi}". Please check if the variant column "${variantColumn}" contains "Control" values and if the KPI column has numeric data.`);
+        }
         const controlMean = ss.mean(controlClean);
         const variantMean = ss.mean(variantClean);
         const controlMedian = ss.median(controlClean);
