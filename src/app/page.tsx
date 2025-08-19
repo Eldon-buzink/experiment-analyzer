@@ -128,6 +128,53 @@ export default function Home() {
   };
 
   const parseCSVFile = (file: File, content?: string) => {
+    const useWorker = file.size > 50 * 1024 * 1024;
+    setParsingProgress(1);
+    setLoading(true);
+
+    if (useWorker) {
+      try {
+                 const worker = new Worker(new URL("../../workers/csvParserWorker.ts", import.meta.url), {
+          type: "module",
+        });
+
+        worker.postMessage(content || file);
+
+        worker.onmessage = (e) => {
+          const { type, value, rows, message } = e.data;
+          if (type === 'progress') {
+            setParsingProgress(Math.min(99, value / 1000)); // crude estimate
+          } else if (type === 'done') {
+            setParsedData(rows as Record<string, string>[]);
+            setParsingProgress(100);
+            setLoading(false);
+            worker.terminate();
+          } else if (type === 'error') {
+            setError("Worker error: " + message);
+            setLoading(false);
+            setParsingProgress(0);
+            worker.terminate();
+          }
+        };
+
+        worker.onerror = (error) => {
+          setError("Worker error: " + error.message);
+          setLoading(false);
+          setParsingProgress(0);
+          worker.terminate();
+        };
+
+      } catch (error) {
+        // Fallback to regular parsing if worker fails
+        console.warn('Worker not supported, falling back to regular parsing:', error);
+        parseWithRegularMethod(file, content);
+      }
+    } else {
+      parseWithRegularMethod(file, content);
+    }
+  };
+
+  const parseWithRegularMethod = (file: File, content?: string) => {
     // Set a timeout for very large files (10 minutes)
     const timeoutId = setTimeout(() => {
       if (loading) {
@@ -298,38 +345,44 @@ export default function Home() {
         reader.readAsText(file);
       }
     } else {
-      // For smaller files, parse directly
-      Papa.parse(file, {
+      // For smaller files, parse directly with step callback
+      // eslint-disable-next-line prefer-const
+      let parsedRows: Record<string, string>[] = [];
+      let totalRows = 0;
+
+      Papa.parse(content || file, {
         header: true,
         skipEmptyLines: true,
-        chunk: (results: Papa.ParseResult<unknown>) => {
-          // Simple progress increment for smaller files
-          console.log('Chunk processed, rows:', results.data.length);
-          setParsingProgress(prev => Math.min(90, prev + 2));
+                 step: function (results) {
+           parsedRows.push(results.data as Record<string, string>);
+          totalRows++;
+          if (totalRows % 500 === 0) {
+            setParsingProgress((prev) => Math.min(99, prev + 1));
+          }
         },
-        complete: (result) => {
+        complete: function () {
           clearTimeout(timeoutId);
-          console.log('CSV parsing complete, total rows:', result.data.length);
+          console.log('CSV parsing complete, total rows:', totalRows);
           setParsingProgress(100);
           
-          if (result.data.length === 0) {
+          if (parsedRows.length === 0) {
             setError("No data found in the CSV file. Please check if the file is properly formatted.");
             setLoading(false);
             return;
           }
 
           // Count numeric columns
-                        const firstRow = result.data[0] as Record<string, string | number>;
+          const firstRow = parsedRows[0];
           const numericColumns = Object.keys(firstRow).filter(key => {
             const value = firstRow[key];
             return typeof value === 'number' || (typeof value === 'string' && !isNaN(Number(value)) && value.trim() !== '');
           });
           console.log('Numeric columns found:', numericColumns.length);
 
-          setParsedData(result.data as Record<string, string>[]);
+          setParsedData(parsedRows);
           setLoading(false);
         },
-        error: (err: unknown) => {
+        error: function (err) {
           clearTimeout(timeoutId);
           console.error('CSV parsing error:', err);
           setError("Failed to parse the CSV file. Please check if the file is properly formatted and try again.");
