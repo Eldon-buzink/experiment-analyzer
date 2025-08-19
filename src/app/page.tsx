@@ -1006,7 +1006,15 @@ export default function Home() {
                     if (!proceed) return;
                   }
                   
+                  // Add timeout to prevent browser from becoming unresponsive
+                  const analysisTimeout = setTimeout(() => {
+                    setError("Analysis is taking too long. Please try with fewer KPIs or a smaller dataset.");
+                    setLoading(false);
+                    setParsingProgress(0);
+                  }, 30000); // 30 second timeout
+                  
                   await handleAnalyze(e); 
+                  clearTimeout(analysisTimeout); // Clear timeout if analysis completes
                   console.log('handleAnalyze completed, error:', error);
                   if (!error) {
                     console.log('Moving to step 3');
