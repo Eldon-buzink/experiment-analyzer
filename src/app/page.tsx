@@ -391,7 +391,11 @@ export default function Home() {
   // New: Analyze the parsed CSV data
   const handleAnalyze = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!parsedData.length || !primaryKpi) return;
+    console.log('handleAnalyze called with:', { parsedDataLength: parsedData.length, primaryKpi });
+    if (!parsedData.length || !primaryKpi) {
+      console.log('Early return - missing data or primaryKpi');
+      return;
+    }
     setLoading(true);
     setError("");
     setResults(null);
@@ -564,7 +568,9 @@ export default function Home() {
         const zerosB = setB.filter(v => v === 0).length;
         setDebugInfo({ nullsA, zerosA, nullsB, zerosB });
       }
+      console.log('handleAnalyze completed successfully');
     } catch (err) {
+      console.error('handleAnalyze error:', err);
       setError(err instanceof Error ? err.message : 'Analysis failed');
     } finally {
       setLoading(false);
@@ -650,7 +656,15 @@ export default function Home() {
             <CardContent>
               {/* Step 2: KPI Selection */}
               {step === 2 && kpis.length > 0 && (
-                <form onSubmit={async (e) => { await handleAnalyze(e); if (!error) setStep(3); }} className="flex flex-col gap-4">
+                <form onSubmit={async (e) => { 
+                  console.log('Form submitted, primaryKpi:', primaryKpi);
+                  await handleAnalyze(e); 
+                  console.log('handleAnalyze completed, error:', error);
+                  if (!error) {
+                    console.log('Moving to step 3');
+                    setStep(3);
+                  }
+                }} className="flex flex-col gap-4">
                   <div>
                     <label className="font-medium">Primary KPI</label>
                     <select
