@@ -428,8 +428,19 @@ export default function Home() {
         }
       }
       
-      const controlName = 'Control';
-      const variantName = rows.find(r => r[variantColumn] !== controlName)?.[variantColumn] || 'Variant';
+      // Find the most common variant value and use it as control
+      const variantValues = rows.map(r => String(r[variantColumn])).filter(v => v && v !== 'undefined' && v !== 'null');
+      const valueCounts = variantValues.reduce((acc, val) => {
+        acc[val] = (acc[val] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+      
+      // Use the most common value as control, others as variants
+      const sortedValues = Object.entries(valueCounts).sort(([,a], [,b]) => b - a);
+      const controlName = sortedValues[0]?.[0] || 'Control';
+      const variantName = sortedValues[1]?.[0] || 'Variant';
+      
+      console.log(`Variant values found:`, valueCounts);
       console.log(`Using variant column: ${variantColumn}, control name: ${controlName}, variant name: ${variantName}`);
 
       function analyzeKpi(kpi: string): MannWhitneyResult & { debug: { controlSize: number, variantSize: number, controlZeros: number, variantZeros: number } } {
