@@ -638,14 +638,162 @@ export default function Home() {
       const primaryResult = analyzeKpi(primaryKpi);
       const secondaryResults: Record<string, MannWhitneyResult> = {};
       
-              // Process secondary KPIs with progress updates
+              // Process secondary KPIs with chunked processing to prevent UI freezing
         const kpisToAnalyze = secondaryKpis.filter(kpi => kpi && kpi !== primaryKpi);
-        for (let i = 0; i < kpisToAnalyze.length; i++) {
-          const kpi = kpisToAnalyze[i];
-          const progress = 20 + ((i + 1) / kpisToAnalyze.length) * 60; // 20-80%
-          console.log(`Analyzing secondary KPI ${i + 1}/${kpisToAnalyze.length}: ${kpi}`);
-          setParsingProgress(Math.round(progress));
-          secondaryResults[kpi] = analyzeKpi(kpi);
+        
+        if (kpisToAnalyze.length > 0) {
+          // Process KPIs in chunks to prevent UI freezing
+          const processKPIChunk = (index: number) => {
+                         if (index >= kpisToAnalyze.length) {
+               // All KPIs processed, continue with impact calculation
+               setParsingProgress(80);
+               
+               // Calculate impact rows
+               const impactRows: KpiImpactRow[] = kpis.map(kpi => {
+                 const controlRows = rows.filter(r => String(r[variantColumn]) === controlName);
+                 const variantRows = rows.filter(r => String(r[variantColumn]) !== controlName);
+                 
+                 const setA_raw = controlRows.map(r => r[kpi]);
+                 const setB_raw = variantRows.map(r => r[kpi]);
+                 const nullsA = setA_raw.filter(v => v === null || v === undefined || v === '').length;
+                 const nullsB = setB_raw.filter(v => v === null || v === undefined || v === '').length;
+                 const setA = setA_raw.map(v => Number(v)).map(v => isNaN(v) ? 0 : v);
+                 const setB = setB_raw.map(v => Number(v)).map(v => isNaN(v) ? 0 : v);
+                 const zerosA = setA.filter(v => v === 0).length;
+                 const zerosB = setB.filter(v => v === 0).length;
+                 
+                 const setA_no_zeros = setA.filter(v => v !== 0);
+                 const setB_no_zeros = setB.filter(v => v !== 0);
+                 
+                 const controlSum = setA.reduce((sum, v) => sum + v, 0);
+                 const variantSum = setB.reduce((sum, v) => sum + v, 0);
+                 const controlTotal = setA.length;
+                 const variantTotal = setB.length;
+                 const controlConverted = setA.filter(v => v > 0).length;
+                 const variantConverted = setB.filter(v => v > 0).length;
+                 const controlCR = controlTotal ? (controlConverted / controlTotal) * 100 : 0;
+                 const variantCR = variantTotal ? (variantConverted / variantTotal) * 100 : 0;
+                 const percentChange = controlCR !== 0 ? ((variantCR - controlCR) / controlCR) * 100 : 0;
+                 
+                 const avgA = setA_no_zeros.length ? ss.mean(setA_no_zeros) : 0;
+                 const avgB = setB_no_zeros.length ? ss.mean(setB_no_zeros) : 0;
+                 const percentImpact = avgA !== 0 ? ((avgB - avgA) / avgA) * 100 : 0;
+                 const medA = setA_no_zeros.length ? ss.median(setA_no_zeros) : 0;
+                 const medB = setB_no_zeros.length ? ss.median(setB_no_zeros) : 0;
+                 
+                 let pValue = null;
+                 let significant = false;
+                 if (setA_no_zeros.length > 0 && setB_no_zeros.length > 0) {
+                   pValue = ss.wilcoxonRankSum(setA_no_zeros, setB_no_zeros);
+                   significant = pValue < 0.1;
+                 }
+                 
+                 return {
+                   kpi,
+                   controlSum,
+                   variantSum,
+                   controlCR,
+                   variantCR,
+                   percentChange,
+                   avgA,
+                   avgB,
+                   percentImpact,
+                   medA,
+                   medB,
+                   pValue,
+                   significant,
+                 };
+               });
+               
+               setKpiImpact(impactRows);
+               setParsingProgress(100);
+               setLoading(false);
+               setStep(3);
+               return;
+             }
+            
+            const kpi = kpisToAnalyze[index];
+            const progress = 20 + ((index + 1) / kpisToAnalyze.length) * 60; // 20-80%
+            console.log(`Analyzing secondary KPI ${index + 1}/${kpisToAnalyze.length}: ${kpi}`);
+            setParsingProgress(Math.round(progress));
+            
+            try {
+              secondaryResults[kpi] = analyzeKpi(kpi);
+            } catch (error) {
+              console.error(`Error analyzing KPI ${kpi}:`, error);
+            }
+            
+            // Process next KPI after a small delay to prevent UI freezing
+            setTimeout(() => processKPIChunk(index + 1), 10);
+          };
+          
+          // Start processing KPIs
+          processKPIChunk(0);
+        } else {
+          // No secondary KPIs, continue with impact calculation
+          setParsingProgress(80);
+          
+          // Calculate impact rows
+          const impactRows: KpiImpactRow[] = kpis.map(kpi => {
+            const controlRows = rows.filter(r => String(r[variantColumn]) === controlName);
+            const variantRows = rows.filter(r => String(r[variantColumn]) !== controlName);
+            
+            const setA_raw = controlRows.map(r => r[kpi]);
+            const setB_raw = variantRows.map(r => r[kpi]);
+            const nullsA = setA_raw.filter(v => v === null || v === undefined || v === '').length;
+            const nullsB = setB_raw.filter(v => v === null || v === undefined || v === '').length;
+            const setA = setA_raw.map(v => Number(v)).map(v => isNaN(v) ? 0 : v);
+            const setB = setB_raw.map(v => Number(v)).map(v => isNaN(v) ? 0 : v);
+            const zerosA = setA.filter(v => v === 0).length;
+            const zerosB = setB.filter(v => v === 0).length;
+            
+            const setA_no_zeros = setA.filter(v => v !== 0);
+            const setB_no_zeros = setB.filter(v => v !== 0);
+            
+            const controlSum = setA.reduce((sum, v) => sum + v, 0);
+            const variantSum = setB.reduce((sum, v) => sum + v, 0);
+            const controlTotal = setA.length;
+            const variantTotal = setB.length;
+            const controlConverted = setA.filter(v => v > 0).length;
+            const variantConverted = setB.filter(v => v > 0).length;
+            const controlCR = controlTotal ? (controlConverted / controlTotal) * 100 : 0;
+            const variantCR = variantTotal ? (variantConverted / variantTotal) * 100 : 0;
+            const percentChange = controlCR !== 0 ? ((variantCR - controlCR) / controlCR) * 100 : 0;
+            
+            const avgA = setA_no_zeros.length ? ss.mean(setA_no_zeros) : 0;
+            const avgB = setB_no_zeros.length ? ss.mean(setB_no_zeros) : 0;
+            const percentImpact = avgA !== 0 ? ((avgB - avgA) / avgA) * 100 : 0;
+            const medA = setA_no_zeros.length ? ss.median(setA_no_zeros) : 0;
+            const medB = setB_no_zeros.length ? ss.median(setB_no_zeros) : 0;
+            
+            let pValue = null;
+            let significant = false;
+            if (setA_no_zeros.length > 0 && setB_no_zeros.length > 0) {
+              pValue = ss.wilcoxonRankSum(setA_no_zeros, setB_no_zeros);
+              significant = pValue < 0.1;
+            }
+            
+            return {
+              kpi,
+              controlSum,
+              variantSum,
+              controlCR,
+              variantCR,
+              percentChange,
+              avgA,
+              avgB,
+              percentImpact,
+              medA,
+              medB,
+              pValue,
+              significant,
+            };
+          });
+          
+          setKpiImpact(impactRows);
+          setParsingProgress(100);
+          setLoading(false);
+          setStep(3);
         }
 
       // In handleAnalyze or analyzeKpi, update KPI calculations to exclude zeros
