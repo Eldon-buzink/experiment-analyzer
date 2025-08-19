@@ -428,19 +428,26 @@ export default function Home() {
         }
       }
       
-      // Find the most common variant value and use it as control
+      // Find all variant values in the data
       const variantValues = rows.map(r => String(r[variantColumn])).filter(v => v && v !== 'undefined' && v !== 'null');
       const valueCounts = variantValues.reduce((acc, val) => {
         acc[val] = (acc[val] || 0) + 1;
         return acc;
       }, {} as Record<string, number>);
       
+      console.log(`Variant values found:`, valueCounts);
+      
+      // Check if we have multiple groups
+      const uniqueValues = Object.keys(valueCounts);
+      if (uniqueValues.length < 2) {
+        throw new Error(`Your data only contains one group (${uniqueValues[0]}). A/B testing requires at least two groups (control and variant). Please check if your CSV contains both control and variant data.`);
+      }
+      
       // Use the most common value as control, others as variants
       const sortedValues = Object.entries(valueCounts).sort(([,a], [,b]) => b - a);
       const controlName = sortedValues[0]?.[0] || 'Control';
       const variantName = sortedValues[1]?.[0] || 'Variant';
       
-      console.log(`Variant values found:`, valueCounts);
       console.log(`Using variant column: ${variantColumn}, control name: ${controlName}, variant name: ${variantName}`);
 
       function analyzeKpi(kpi: string): MannWhitneyResult & { debug: { controlSize: number, variantSize: number, controlZeros: number, variantZeros: number } } {
