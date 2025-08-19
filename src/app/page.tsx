@@ -398,7 +398,7 @@ export default function Home() {
     );
   };
 
-  // New: Analyze the parsed CSV data
+  // New: Analyze the parsed CSV data using Web Worker
   const handleAnalyze = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     console.log('=== NEW VERSION OF handleAnalyze ===');
@@ -410,57 +410,163 @@ export default function Home() {
     setLoading(true);
     setError("");
     setResults(null);
+    setParsingProgress(0);
 
     try {
-      // Use the already parsed data
-      const rows = parsedData;
-      console.log('Available columns:', Object.keys(rows[0] || {}));
+      // Use Web Worker for analysis to prevent browser freezing
+      const useWorker = parsedData.length > 50000 || secondaryKpis.length > 1;
       
-      // Try to find the variant column dynamically
-      const possibleVariantColumns = [
-        'Vwo Metrics per User Mart Test Variant',
-        'variant',
-        'Variant',
-        'test_variant',
-        'Test Variant',
-        'group',
-        'Group',
-        'treatment',
-        'Treatment'
-      ];
-      
-      let variantColumn = 'Vwo Metrics per User Mart Test Variant'; // default
-      for (const col of possibleVariantColumns) {
-        if (rows[0] && rows[0][col] !== undefined) {
-          variantColumn = col;
-          console.log(`Found variant column: ${variantColumn}`);
-          break;
+      if (useWorker) {
+        console.log('Using Web Worker for analysis');
+        
+        const worker = new Worker(new URL("../../workers/analysisWorker.ts", import.meta.url), {
+          type: "module",
+        });
+        
+        // Prepare data for worker
+        const rows = parsedData;
+        console.log('Available columns:', Object.keys(rows[0] || {}));
+        
+        // Try to find the variant column dynamically
+        const possibleVariantColumns = [
+          'Vwo Metrics per User Mart Test Variant',
+          'variant',
+          'Variant',
+          'test_variant',
+          'Test Variant',
+          'group',
+          'Group',
+          'treatment',
+          'Treatment'
+        ];
+        
+        let variantColumn = 'Vwo Metrics per User Mart Test Variant'; // default
+        for (const col of possibleVariantColumns) {
+          if (rows[0] && rows[0][col] !== undefined) {
+            variantColumn = col;
+            console.log(`Found variant column: ${variantColumn}`);
+            break;
+          }
         }
-      }
-      
-      // Find all variant values in the data
-      const variantValues = rows.map(r => String(r[variantColumn])).filter(v => v && v !== 'undefined' && v !== 'null');
-      const valueCounts = variantValues.reduce((acc, val) => {
-        acc[val] = (acc[val] || 0) + 1;
-        return acc;
-      }, {} as Record<string, number>);
-      
-      console.log(`Variant values found:`, valueCounts);
-      
-      // Check if we have multiple groups
-      const uniqueValues = Object.keys(valueCounts);
-      if (uniqueValues.length < 2) {
-        throw new Error(`Your data only contains one group (${uniqueValues[0]}). A/B testing requires at least two groups (control and variant). Please check if your CSV contains both control and variant data.`);
-      }
-      
-      // Use the most common value as control, others as variants
-      const sortedValues = Object.entries(valueCounts).sort(([,a], [,b]) => b - a);
-      const controlName = sortedValues[0]?.[0] || 'Control';
-      const variantName = sortedValues[1]?.[0] || 'Variant';
-      
-      console.log(`Using variant column: ${variantColumn}, control name: ${controlName}, variant name: ${variantName}`);
+        
+        // Find all variant values in the data
+        const variantValues = rows.map(r => String(r[variantColumn])).filter(v => v && v !== 'undefined' && v !== 'null');
+        const valueCounts = variantValues.reduce((acc, val) => {
+          acc[val] = (acc[val] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>);
+        
+        console.log(`Variant values found:`, valueCounts);
+        
+        // Check if we have multiple groups
+        const uniqueValues = Object.keys(valueCounts);
+        if (uniqueValues.length < 2) {
+          throw new Error(`Your data only contains one group (${uniqueValues[0]}). A/B testing requires at least two groups (control and variant). Please check if your CSV contains both control and variant data.`);
+        }
+        
+        // Use the most common value as control, others as variants
+        const sortedValues = Object.entries(valueCounts).sort(([,a], [,b]) => b - a);
+        const controlName = sortedValues[0]?.[0] || 'Control';
+        const variantName = sortedValues[1]?.[0] || 'Variant';
+        
+        console.log(`Using variant column: ${variantColumn}, control name: ${controlName}, variant name: ${variantName}`);
+        
+        // Send data to worker
+        worker.postMessage({
+          rows,
+          variantColumn,
+          controlName,
+          variantName,
+          primaryKpi,
+          secondaryKpis
+        });
+        
+        // Handle worker messages
+        worker.onmessage = (e) => {
+          const { type, message, percent, results, impactRows, debugInfo } = e.data;
+          
+          if (type === 'progress') {
+            console.log('Analysis progress:', message, percent + '%');
+            setParsingProgress(percent);
+          } else if (type === 'done') {
+            console.log('Analysis completed successfully');
+            setResults(results);
+            setKpiImpact(impactRows);
+            setDebugInfo(debugInfo);
+            setParsingProgress(100);
+            setLoading(false);
+            setStep(3);
+            worker.terminate();
+          } else if (type === 'error') {
+            console.error('Worker error:', message);
+            setError(message);
+            setLoading(false);
+            setParsingProgress(0);
+            worker.terminate();
+          }
+        };
+        
+        worker.onerror = (error) => {
+          console.error('Worker error:', error);
+          setError("Analysis worker failed. Please try again.");
+          setLoading(false);
+          setParsingProgress(0);
+          worker.terminate();
+        };
+        
+             } else {
+         // Fallback to regular analysis for small datasets
+         console.log('Using regular analysis for small dataset');
+         
+         // Use the already parsed data
+         const rows = parsedData;
+         console.log('Available columns:', Object.keys(rows[0] || {}));
+         
+         // Try to find the variant column dynamically
+         const possibleVariantColumns = [
+           'Vwo Metrics per User Mart Test Variant',
+           'variant',
+           'Variant',
+           'test_variant',
+           'Test Variant',
+           'group',
+           'Group',
+           'treatment',
+           'Treatment'
+         ];
+         
+         let variantColumn = 'Vwo Metrics per User Mart Test Variant'; // default
+         for (const col of possibleVariantColumns) {
+           if (rows[0] && rows[0][col] !== undefined) {
+             variantColumn = col;
+             console.log(`Found variant column: ${variantColumn}`);
+             break;
+           }
+         }
+         
+         // Find all variant values in the data
+         const variantValues = rows.map(r => String(r[variantColumn])).filter(v => v && v !== 'undefined' && v !== 'null');
+         const valueCounts = variantValues.reduce((acc, val) => {
+           acc[val] = (acc[val] || 0) + 1;
+           return acc;
+         }, {} as Record<string, number>);
+         
+         console.log(`Variant values found:`, valueCounts);
+         
+         // Check if we have multiple groups
+         const uniqueValues = Object.keys(valueCounts);
+         if (uniqueValues.length < 2) {
+           throw new Error(`Your data only contains one group (${uniqueValues[0]}). A/B testing requires at least two groups (control and variant). Please check if your CSV contains both control and variant data.`);
+         }
+         
+         // Use the most common value as control, others as variants
+         const sortedValues = Object.entries(valueCounts).sort(([,a], [,b]) => b - a);
+         const controlName = sortedValues[0]?.[0] || 'Control';
+         const variantName = sortedValues[1]?.[0] || 'Variant';
+         
+         console.log(`Using variant column: ${variantColumn}, control name: ${controlName}, variant name: ${variantName}`);
 
-      function analyzeKpi(kpi: string): MannWhitneyResult & { debug: { controlSize: number, variantSize: number, controlZeros: number, variantZeros: number } } {
+        function analyzeKpi(kpi: string): MannWhitneyResult & { debug: { controlSize: number, variantSize: number, controlZeros: number, variantZeros: number } } {
         console.log(`Analyzing KPI: ${kpi}`);
         console.log(`Total rows: ${rows.length}`);
         console.log(`Variant column: ${variantColumn}`);
@@ -791,6 +897,15 @@ export default function Home() {
                       {loading ? "Analyzing..." : "Next"}
                     </Button>
                   </div>
+                  {loading && parsingProgress > 0 && (
+                    <div className="mt-4">
+                      <div className="flex justify-between text-sm text-muted-foreground mb-2">
+                        <span>Analyzing data...</span>
+                        <span>{parsingProgress}%</span>
+                      </div>
+                      <Progress value={parsingProgress} className="w-full" />
+                    </div>
+                  )}
                   {error && <div className="text-red-500 mt-4">{error}</div>}
                 </form>
               )}
