@@ -127,91 +127,13 @@ export default function Home() {
     }
   };
 
-  const parseCSVFile = (file: File, content?: string) => {
-    const useWorker = file.size > 50 * 1024 * 1024;
+    const parseCSVFile = (file: File, content?: string) => {
     setParsingProgress(1);
     setLoading(true);
 
-        if (useWorker) {
-      try {
-        const worker = new Worker(new URL("../../workers/csvParserWorker.ts", import.meta.url), {
-          type: "module",
-        });
-
-        // Ensure we have the file content as text
-        if (content) {
-          console.log('Main: Sending content to worker, length:', content.length);
-          worker.postMessage(content);
-        } else {
-          // Read the file first, then send to worker
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            const fileContent = e.target?.result as string;
-            console.log('Main: Read file, sending content to worker, length:', fileContent.length);
-            worker.postMessage(fileContent);
-          };
-          reader.onerror = () => {
-            setError("Failed to read file for worker");
-            setLoading(false);
-            setParsingProgress(0);
-          };
-          reader.readAsText(file);
-        }
-
-        worker.onmessage = (e) => {
-          const { type, value, rows, message, totalRows } = e.data;
-          console.log('Main: Worker message received:', type, { value, totalRows, rowsLength: rows?.length });
-          
-          if (type === 'progress') {
-            setParsingProgress(Math.min(99, value / 1000)); // crude estimate
-          } else if (type === 'done') {
-            console.log('Main: Worker completed, setting data with', rows?.length, 'rows');
-            if (rows && rows.length > 0) {
-              setParsedData(rows as Record<string, string>[]);
-              
-              // Find numeric columns and set KPIs
-              const firstRow = rows[0] as Record<string, string>;
-              const numericColumns = Object.keys(firstRow).filter(key => {
-                const value = firstRow[key];
-                return typeof value === 'number' || (typeof value === 'string' && !isNaN(Number(value)) && value.trim() !== '');
-              });
-              console.log('Numeric columns found:', numericColumns.length);
-              
-              setKpis(numericColumns);
-              setParsingProgress(100);
-              setLoading(false);
-              setStep(2); // Move to next step
-              worker.terminate();
-            } else {
-              setError("Worker completed but no data was returned");
-              setLoading(false);
-              setParsingProgress(0);
-              worker.terminate();
-            }
-          } else if (type === 'error') {
-            console.error('Main: Worker error:', message);
-            setError("Worker error: " + message);
-            setLoading(false);
-            setParsingProgress(0);
-            worker.terminate();
-          }
-        };
-
-        worker.onerror = (error) => {
-          setError("Worker error: " + error.message);
-          setLoading(false);
-          setParsingProgress(0);
-          worker.terminate();
-        };
-
-      } catch (error) {
-        // Fallback to regular parsing if worker fails
-        console.warn('Worker not supported, falling back to regular parsing:', error);
-        parseWithRegularMethod(file, content);
-      }
-    } else {
-      parseWithRegularMethod(file, content);
-    }
+    // For now, use regular parsing for all files to avoid Vercel build issues
+    // TODO: Re-enable Web Workers once Vercel compatibility is resolved
+    parseWithRegularMethod(file, content);
   };
 
   const parseWithRegularMethod = (file: File, content?: string) => {
@@ -231,36 +153,42 @@ export default function Home() {
         console.log('File read complete, size:', content.length, 'characters');
         setParsingProgress(50); // File read complete
         
-        // Parse the CSV with better progress tracking
+        // Parse the CSV with step callback for better progress tracking
         console.log('Starting CSV parsing...');
+        // eslint-disable-next-line prefer-const
+        let parsedRows: Record<string, string>[] = [];
+        let totalRows = 0;
+
         Papa.parse(content, {
           header: true,
           skipEmptyLines: true,
-          chunk: (results: Papa.ParseResult<unknown>) => {
-            // Simple progress increment for large files
-            console.log('Chunk processed, rows:', results.data.length);
-            setParsingProgress(prev => Math.min(90, prev + 5));
+          step: function (results) {
+            parsedRows.push(results.data as Record<string, string>);
+            totalRows++;
+            if (totalRows % 1000 === 0) {
+              setParsingProgress(Math.min(99, 50 + (totalRows / 1000) * 0.5)); // 50-99% range
+            }
           },
-          complete: (result) => {
+          complete: function () {
             clearTimeout(timeoutId);
-            console.log('CSV parsing complete, total rows:', result.data.length);
+            console.log('CSV parsing complete, total rows:', totalRows);
             setParsingProgress(100);
             
-            if (result.data.length === 0) {
+            if (parsedRows.length === 0) {
               setError("No data found in the CSV file. Please check if the file is properly formatted.");
               setLoading(false);
               return;
             }
 
             // Count numeric columns
-            const firstRow = result.data[0] as Record<string, string | number>;
+            const firstRow = parsedRows[0];
             const numericColumns = Object.keys(firstRow).filter(key => {
               const value = firstRow[key];
               return typeof value === 'number' || (typeof value === 'string' && !isNaN(Number(value)) && value.trim() !== '');
             });
             console.log('Numeric columns found:', numericColumns.length);
 
-            setParsedData(result.data as Record<string, string>[]);
+            setParsedData(parsedRows);
             setKpis(numericColumns);
             setLoading(false);
             setStep(2); // Move to next step

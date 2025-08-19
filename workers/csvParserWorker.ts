@@ -1,6 +1,35 @@
 // workers/csvParserWorker.ts
 // @ts-nocheck
-import Papa from 'papaparse';
+
+// Inline PapaParse for worker compatibility
+const Papa = {
+  parse: function(content, config) {
+    const lines = content.split('\n');
+    const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+    const data = [];
+    
+    for (let i = 1; i < lines.length; i++) {
+      if (lines[i].trim() === '') continue;
+      
+      const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
+      const row = {};
+      
+      for (let j = 0; j < headers.length; j++) {
+        row[headers[j]] = values[j] || '';
+      }
+      
+      data.push(row);
+      
+      if (config.step) {
+        config.step({ data: row }, { data: data });
+      }
+    }
+    
+    if (config.complete) {
+      config.complete({ data: data });
+    }
+  }
+};
 
 self.onmessage = function (e) {
   try {
