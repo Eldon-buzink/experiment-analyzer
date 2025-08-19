@@ -351,9 +351,19 @@ export default function Home() {
             return;
           }
 
-          // Count numeric columns
+          // Count numeric columns (exclude metadata columns)
           const firstRow = parsedRows[0];
+          const excludeColumns = [
+            'Vwo Metrics per User Mart Platform User ID',
+            'Vwo Metrics per User Mart Test ID', 
+            'Vwo Metrics per User Mart Test Variant',
+            'Session ID'
+          ];
+          
           const numericColumns = Object.keys(firstRow).filter(key => {
+            // Skip metadata columns
+            if (excludeColumns.includes(key)) return false;
+            
             const value = firstRow[key];
             return typeof value === 'number' || (typeof value === 'string' && !isNaN(Number(value)) && value.trim() !== '');
           });
@@ -514,10 +524,13 @@ export default function Home() {
 
       const primaryResult = analyzeKpi(primaryKpi);
       const secondaryResults: Record<string, MannWhitneyResult> = {};
-      for (const kpi of secondaryKpis) {
-        if (kpi && kpi !== primaryKpi) {
-          secondaryResults[kpi] = analyzeKpi(kpi);
-        }
+      
+      // Process secondary KPIs with progress updates
+      const kpisToAnalyze = secondaryKpis.filter(kpi => kpi && kpi !== primaryKpi);
+      for (let i = 0; i < kpisToAnalyze.length; i++) {
+        const kpi = kpisToAnalyze[i];
+        console.log(`Analyzing secondary KPI ${i + 1}/${kpisToAnalyze.length}: ${kpi}`);
+        secondaryResults[kpi] = analyzeKpi(kpi);
       }
 
       // In handleAnalyze or analyzeKpi, update KPI calculations to exclude zeros
@@ -719,6 +732,15 @@ export default function Home() {
               {step === 2 && kpis.length > 0 && (
                 <form onSubmit={async (e) => { 
                   console.log('Form submitted, primaryKpi:', primaryKpi);
+                  
+                  // Warn about performance with large datasets and multiple KPIs
+                  if (parsedData.length > 100000 && secondaryKpis.length > 2) {
+                    const proceed = window.confirm(
+                      `Warning: You're analyzing ${parsedData.length.toLocaleString()} rows with ${secondaryKpis.length + 1} KPIs. This may take a while and could freeze the browser. Continue anyway?`
+                    );
+                    if (!proceed) return;
+                  }
+                  
                   await handleAnalyze(e); 
                   console.log('handleAnalyze completed, error:', error);
                   if (!error) {
