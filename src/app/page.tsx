@@ -132,24 +132,53 @@ export default function Home() {
     setParsingProgress(1);
     setLoading(true);
 
-    if (useWorker) {
+        if (useWorker) {
       try {
-                 const worker = new Worker(new URL("../../workers/csvParserWorker.ts", import.meta.url), {
+        const worker = new Worker(new URL("../../workers/csvParserWorker.ts", import.meta.url), {
           type: "module",
         });
 
-        worker.postMessage(content || file);
+        // Ensure we have the file content as text
+        if (content) {
+          console.log('Main: Sending content to worker, length:', content.length);
+          worker.postMessage(content);
+        } else {
+          // Read the file first, then send to worker
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const fileContent = e.target?.result as string;
+            console.log('Main: Read file, sending content to worker, length:', fileContent.length);
+            worker.postMessage(fileContent);
+          };
+          reader.onerror = () => {
+            setError("Failed to read file for worker");
+            setLoading(false);
+            setParsingProgress(0);
+          };
+          reader.readAsText(file);
+        }
 
         worker.onmessage = (e) => {
-          const { type, value, rows, message } = e.data;
+          const { type, value, rows, message, totalRows } = e.data;
+          console.log('Main: Worker message received:', type, { value, totalRows, rowsLength: rows?.length });
+          
           if (type === 'progress') {
             setParsingProgress(Math.min(99, value / 1000)); // crude estimate
           } else if (type === 'done') {
-            setParsedData(rows as Record<string, string>[]);
-            setParsingProgress(100);
-            setLoading(false);
-            worker.terminate();
+            console.log('Main: Worker completed, setting data with', rows?.length, 'rows');
+            if (rows && rows.length > 0) {
+              setParsedData(rows as Record<string, string>[]);
+              setParsingProgress(100);
+              setLoading(false);
+              worker.terminate();
+            } else {
+              setError("Worker completed but no data was returned");
+              setLoading(false);
+              setParsingProgress(0);
+              worker.terminate();
+            }
           } else if (type === 'error') {
+            console.error('Main: Worker error:', message);
             setError("Worker error: " + message);
             setLoading(false);
             setParsingProgress(0);
