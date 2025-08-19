@@ -747,6 +747,7 @@ export default function Home() {
         const zerosA = setA.filter(v => v === 0).length;
         const zerosB = setB.filter(v => v === 0).length;
         setDebugInfo({ nullsA, zerosA, nullsB, zerosB });
+        }
       }
       console.log('handleAnalyze completed successfully');
     } catch (err) {
