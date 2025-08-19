@@ -168,8 +168,19 @@ export default function Home() {
             console.log('Main: Worker completed, setting data with', rows?.length, 'rows');
             if (rows && rows.length > 0) {
               setParsedData(rows as Record<string, string>[]);
+              
+              // Find numeric columns and set KPIs
+              const firstRow = rows[0] as Record<string, string>;
+              const numericColumns = Object.keys(firstRow).filter(key => {
+                const value = firstRow[key];
+                return typeof value === 'number' || (typeof value === 'string' && !isNaN(Number(value)) && value.trim() !== '');
+              });
+              console.log('Numeric columns found:', numericColumns.length);
+              
+              setKpis(numericColumns);
               setParsingProgress(100);
               setLoading(false);
+              setStep(2); // Move to next step
               worker.terminate();
             } else {
               setError("Worker completed but no data was returned");
@@ -250,7 +261,9 @@ export default function Home() {
             console.log('Numeric columns found:', numericColumns.length);
 
             setParsedData(result.data as Record<string, string>[]);
+            setKpis(numericColumns);
             setLoading(false);
+            setStep(2); // Move to next step
           },
           error: (err: unknown) => {
             clearTimeout(timeoutId);
@@ -278,8 +291,18 @@ export default function Home() {
                   return;
                 }
 
+                // Count numeric columns for fallback parsing
+                const firstRow = result.data[0] as Record<string, string>;
+                const numericColumns = Object.keys(firstRow).filter(key => {
+                  const value = firstRow[key];
+                  return typeof value === 'number' || (typeof value === 'string' && !isNaN(Number(value)) && value.trim() !== '');
+                });
+                console.log('Fallback parsing - numeric columns found:', numericColumns.length);
+
                 setParsedData(result.data as Record<string, string>[]);
+                setKpis(numericColumns);
                 setLoading(false);
+                setStep(2); // Move to next step
               },
               error: (err: unknown) => {
                 clearTimeout(timeoutId);
@@ -409,7 +432,9 @@ export default function Home() {
           console.log('Numeric columns found:', numericColumns.length);
 
           setParsedData(parsedRows);
+          setKpis(numericColumns);
           setLoading(false);
+          setStep(2); // Move to next step
         },
         error: function (err) {
           clearTimeout(timeoutId);
