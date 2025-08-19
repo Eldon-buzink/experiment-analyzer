@@ -101,20 +101,33 @@ export default function Home() {
 
 
   // Replace handleUpload with direct client-side parsing
-  const handleUpload = async () => {
-    if (!file) return;
+  const handleUpload = async (file: File) => {
     setLoading(true);
     setError("");
-    setResults(null);
     setParsingProgress(0);
+    setParsedData([]);
 
-    // Check file size and warn if very large
-    const fileSizeMB = file.size / (1024 * 1024);
-    if (fileSizeMB > 100) {
-      setError(`File is very large (${fileSizeMB.toFixed(1)}MB). This may take a while to process.`);
-      // Continue anyway, but warn the user
+    // Check if file is actually HTML disguised as CSV
+    if (file.name.toLowerCase().endsWith('.csv')) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const content = e.target?.result as string;
+        if (content.includes('<!DOCTYPE html>') || content.includes('<html') || content.includes('google') || content.includes('drive.google.com')) {
+          setError("This appears to be an HTML file with a .csv extension. This often happens when downloading from Google Drive. Please download the actual CSV file from Google Drive and try again.");
+          setLoading(false);
+          return;
+        }
+        // Continue with normal CSV parsing
+        parseCSVFile(file, content);
+      };
+      reader.readAsText(file);
+    } else {
+      // For non-CSV files, use the original parsing logic
+      parseCSVFile(file);
     }
+  };
 
+  const parseCSVFile = (file: File, content?: string) => {
     // Set a timeout for very large files (10 minutes)
     const timeoutId = setTimeout(() => {
       if (loading) {
@@ -124,10 +137,86 @@ export default function Home() {
       }
     }, 10 * 60 * 1000); // 10 minutes
 
-    try {
-      // For very large files, use a different approach
-      if (fileSizeMB > 50) {
-        // Use FileReader to read the file in chunks
+    if (file.size > 50 * 1024 * 1024) {
+      // For very large files, read the file content first
+      if (content) {
+        // Content already provided
+        console.log('File read complete, size:', content.length, 'characters');
+        setParsingProgress(50); // File read complete
+        
+        // Parse the CSV with better progress tracking
+        console.log('Starting CSV parsing...');
+        Papa.parse(content, {
+          header: true,
+          skipEmptyLines: true,
+          chunk: (results: Papa.ParseResult<unknown>) => {
+            // Simple progress increment for large files
+            console.log('Chunk processed, rows:', results.data.length);
+            setParsingProgress(prev => Math.min(90, prev + 5));
+          },
+          complete: (result) => {
+            clearTimeout(timeoutId);
+            console.log('CSV parsing complete, total rows:', result.data.length);
+            setParsingProgress(100);
+            
+            if (result.data.length === 0) {
+              setError("No data found in the CSV file. Please check if the file is properly formatted.");
+              setLoading(false);
+              return;
+            }
+
+            // Count numeric columns
+            const firstRow = result.data[0] as Record<string, string | number>;
+            const numericColumns = Object.keys(firstRow).filter(key => {
+              const value = firstRow[key];
+              return typeof value === 'number' || (typeof value === 'string' && !isNaN(Number(value)) && value.trim() !== '');
+            });
+            console.log('Numeric columns found:', numericColumns.length);
+
+            setParsedData(result.data as Record<string, string>[]);
+            setLoading(false);
+          },
+          error: (err: unknown) => {
+            clearTimeout(timeoutId);
+            console.error('CSV parsing error:', err);
+            
+            // Try fallback parsing with different settings
+            console.log('Trying fallback parsing method...');
+            Papa.parse(content!, {
+              header: true,
+              skipEmptyLines: true,
+              dynamicTyping: false,
+              transform: (value: string) => value.trim(),
+              chunk: (results: Papa.ParseResult<unknown>) => {
+                console.log('Fallback chunk processed, rows:', results.data.length);
+                setParsingProgress(prev => Math.min(90, prev + 5));
+              },
+              complete: (result) => {
+                clearTimeout(timeoutId);
+                console.log('Fallback parsing complete, total rows:', result.data.length);
+                setParsingProgress(100);
+                
+                if (result.data.length === 0) {
+                  setError("No data found in the CSV file. Please check if the file is properly formatted.");
+                  setLoading(false);
+                  return;
+                }
+
+                setParsedData(result.data as Record<string, string>[]);
+                setLoading(false);
+              },
+              error: (err: unknown) => {
+                clearTimeout(timeoutId);
+                console.error('Fallback parsing also failed:', err);
+                setError("Failed to parse the CSV file. Please check if the file is properly formatted and try again.");
+                setLoading(false);
+                setParsingProgress(0);
+              }
+            });
+          }
+        });
+      } else {
+        // Read file content first
         const reader = new FileReader();
         reader.onload = (e) => {
           const text = e.target?.result as string;
@@ -147,26 +236,24 @@ export default function Home() {
             complete: (result) => {
               clearTimeout(timeoutId);
               console.log('CSV parsing complete, total rows:', result.data.length);
-              if (result.errors.length > 0) {
-                console.warn('CSV parsing warnings:', result.errors);
+              setParsingProgress(100);
+              
+              if (result.data.length === 0) {
+                setError("No data found in the CSV file. Please check if the file is properly formatted.");
+                setLoading(false);
+                return;
               }
-              
-              setParsingProgress(95);
-              
-              // Store parsed data for later use
-              const rows = result.data as Record<string, string>[];
-              setParsedData(rows);
-              
-              // Find numeric columns
-              const numericColumns = Object.keys(rows[0] || {}).filter(key =>
-                rows.some(row => !isNaN(Number(row[key])) && row[key] !== "" && row[key] !== null)
-              );
-              
+
+              // Count numeric columns
+              const firstRow = result.data[0] as Record<string, string | number>;
+              const numericColumns = Object.keys(firstRow).filter(key => {
+                const value = firstRow[key];
+                return typeof value === 'number' || (typeof value === 'string' && !isNaN(Number(value)) && value.trim() !== '');
+              });
               console.log('Numeric columns found:', numericColumns.length);
-              setKpis(numericColumns);
-              setStep(2);
+
+              setParsedData(result.data as Record<string, string>[]);
               setLoading(false);
-              setParsingProgress(0);
             },
             error: (err: unknown) => {
               clearTimeout(timeoutId);
@@ -185,32 +272,22 @@ export default function Home() {
                 },
                 complete: (result) => {
                   clearTimeout(timeoutId);
-                  console.log('Fallback CSV parsing complete, total rows:', result.data.length);
-                  if (result.errors.length > 0) {
-                    console.warn('Fallback CSV parsing warnings:', result.errors);
+                  console.log('Fallback parsing complete, total rows:', result.data.length);
+                  setParsingProgress(100);
+                  
+                  if (result.data.length === 0) {
+                    setError("No data found in the CSV file. Please check if the file is properly formatted.");
+                    setLoading(false);
+                    return;
                   }
-                  
-                  setParsingProgress(95);
-                  
-                  // Store parsed data for later use
-                  const rows = result.data as Record<string, string>[];
-                  setParsedData(rows);
-                  
-                  // Find numeric columns
-                  const numericColumns = Object.keys(rows[0] || {}).filter(key =>
-                    rows.some(row => !isNaN(Number(row[key])) && row[key] !== "" && row[key] !== null)
-                  );
-                  
-                  console.log('Numeric columns found:', numericColumns.length);
-                  setKpis(numericColumns);
-                  setStep(2);
+
+                  setParsedData(result.data as Record<string, string>[]);
                   setLoading(false);
-                  setParsingProgress(0);
                 },
-                error: (fallbackErr: unknown) => {
+                error: (err: unknown) => {
                   clearTimeout(timeoutId);
-                  console.error('Fallback CSV parsing also failed:', fallbackErr);
-                  setError("CSV parse error: " + (err instanceof Error ? err.message : String(err)) + ". File may be corrupted or in an unsupported format.");
+                  console.error('Fallback parsing also failed:', err);
+                  setError("Failed to parse the CSV file. Please check if the file is properly formatted and try again.");
                   setLoading(false);
                   setParsingProgress(0);
                 }
@@ -218,57 +295,48 @@ export default function Home() {
             }
           });
         };
-        
-        reader.onerror = () => {
+        reader.readAsText(file);
+      }
+    } else {
+      // For smaller files, parse directly
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        chunk: (results: Papa.ParseResult<unknown>) => {
+          // Simple progress increment for smaller files
+          console.log('Chunk processed, rows:', results.data.length);
+          setParsingProgress(prev => Math.min(90, prev + 2));
+        },
+        complete: (result) => {
           clearTimeout(timeoutId);
-          setError("Failed to read file");
+          console.log('CSV parsing complete, total rows:', result.data.length);
+          setParsingProgress(100);
+          
+          if (result.data.length === 0) {
+            setError("No data found in the CSV file. Please check if the file is properly formatted.");
+            setLoading(false);
+            return;
+          }
+
+          // Count numeric columns
+                        const firstRow = result.data[0] as Record<string, string | number>;
+          const numericColumns = Object.keys(firstRow).filter(key => {
+            const value = firstRow[key];
+            return typeof value === 'number' || (typeof value === 'string' && !isNaN(Number(value)) && value.trim() !== '');
+          });
+          console.log('Numeric columns found:', numericColumns.length);
+
+          setParsedData(result.data as Record<string, string>[]);
+          setLoading(false);
+        },
+        error: (err: unknown) => {
+          clearTimeout(timeoutId);
+          console.error('CSV parsing error:', err);
+          setError("Failed to parse the CSV file. Please check if the file is properly formatted and try again.");
           setLoading(false);
           setParsingProgress(0);
-        };
-        
-        reader.readAsText(file);
-      } else {
-        // For smaller files, use the direct approach
-        Papa.parse(file, {
-          header: true,
-          skipEmptyLines: true,
-          chunk: () => {
-            // Simple progress increment for smaller files too
-            setParsingProgress(prev => Math.min(90, prev + 2));
-          },
-          complete: (result) => {
-            clearTimeout(timeoutId);
-            if (result.errors.length > 0) {
-              console.warn('CSV parsing warnings:', result.errors);
-            }
-            
-            // Store parsed data for later use
-            const rows = result.data as Record<string, string>[];
-            setParsedData(rows);
-            
-            // Find numeric columns
-            const numericColumns = Object.keys(rows[0] || {}).filter(key =>
-              rows.some(row => !isNaN(Number(row[key])) && row[key] !== "" && row[key] !== null)
-            );
-            
-            setKpis(numericColumns);
-            setStep(2);
-            setLoading(false);
-            setParsingProgress(0);
-          },
-          error: (err: unknown) => {
-            clearTimeout(timeoutId);
-            setError("CSV parse error: " + (err instanceof Error ? err.message : String(err)));
-            setLoading(false);
-            setParsingProgress(0);
-          }
-        });
-      }
-    } catch (error) {
-      clearTimeout(timeoutId);
-      setError("Failed to read file: " + (error instanceof Error ? error.message : String(error)));
-      setLoading(false);
-      setParsingProgress(0);
+        }
+      });
     }
   };
 
@@ -526,7 +594,7 @@ export default function Home() {
                   )}
                   <Button
                     className="mt-6 w-full"
-                    onClick={handleUpload}
+                    onClick={() => file && handleUpload(file)}
                     disabled={!file || loading}
                   >
                     {loading ? (
