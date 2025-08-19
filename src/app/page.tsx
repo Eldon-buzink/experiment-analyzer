@@ -453,23 +453,27 @@ export default function Home() {
           console.error(`No valid data for KPI ${kpi}: control=${controlClean.length}, variant=${variantClean.length}`);
           throw new Error(`No valid data found for KPI "${kpi}". Please check if the variant column "${variantColumn}" contains "Control" values and if the KPI column has numeric data.`);
         }
-        const controlMean = ss.mean(controlClean);
-        const variantMean = ss.mean(variantClean);
-        const controlMedian = ss.median(controlClean);
-        const variantMedian = ss.median(variantClean);
+        const controlMean = controlClean.length > 0 ? ss.mean(controlClean) : 0;
+        const variantMean = variantClean.length > 0 ? ss.mean(variantClean) : 0;
+        const controlMedian = controlClean.length > 0 ? ss.median(controlClean) : 0;
+        const variantMedian = variantClean.length > 0 ? ss.median(variantClean) : 0;
         // Mean-based percent lift
         const mean_lift = controlMean !== 0 ? ((variantMean - controlMean) / controlMean) * 100 : Infinity;
         const median_lift = controlMedian !== 0 ? ((variantMedian - controlMedian) / controlMedian) * 100 : Infinity;
         // Mann-Whitney U and normal approximation for p-value
-        const u = ss.wilcoxonRankSum(controlClean, variantClean);
-        const n1 = controlClean.length;
-        const n2 = variantClean.length;
-        const mu = (n1 * n2) / 2;
-        const sigma = Math.sqrt((n1 * n2 * (n1 + n2 + 1)) / 12);
-        const z = sigma !== 0 ? (u - mu) / sigma : 0;
-        const pValue = 2 * (1 - ss.cumulativeStdNormalProbability(Math.abs(z)));
-        const significant = pValue < 0.05;
-        const variant_better = variantMean > controlMean;
+        let u = 0, pValue = 1, significant = false, variant_better = false;
+        
+        if (controlClean.length > 0 && variantClean.length > 0) {
+          u = ss.wilcoxonRankSum(controlClean, variantClean);
+          const n1 = controlClean.length;
+          const n2 = variantClean.length;
+          const mu = (n1 * n2) / 2;
+          const sigma = Math.sqrt((n1 * n2 * (n1 + n2 + 1)) / 12);
+          const z = sigma !== 0 ? (u - mu) / sigma : 0;
+          pValue = 2 * (1 - ss.cumulativeStdNormalProbability(Math.abs(z)));
+          significant = pValue < 0.05;
+          variant_better = variantMean > controlMean;
+        }
         return {
           control_mean: Number(controlMean.toFixed(2)),
           variant_mean: Number(variantMean.toFixed(2)),
