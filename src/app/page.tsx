@@ -357,7 +357,10 @@ export default function Home() {
             'Vwo Metrics per User Mart Platform User ID',
             'Vwo Metrics per User Mart Test ID', 
             'Vwo Metrics per User Mart Test Variant',
-            'Session ID'
+            'Session ID',
+            'Vwo Metrics per User Mart Platform User ID',
+            'Vwo Metrics per User Mart Test ID',
+            'Vwo Metrics per User Mart Test Variant'
           ];
           
           const numericColumns = Object.keys(firstRow).filter(key => {
@@ -478,7 +481,8 @@ export default function Home() {
           controlName,
           variantName,
           primaryKpi,
-          secondaryKpis
+          secondaryKpis,
+          fileName: file?.name || 'Untitled Test'
         });
         
         // Handle worker messages
@@ -1015,8 +1019,8 @@ export default function Home() {
                     </div>
                     <KPIBarChart
                       kpi={primaryKpi}
-                      controlMean={results.primary_kpi.control_median}
-                      variantMean={results.primary_kpi.variant_median}
+                      controlMean={results.primary_kpi.control_mean}
+                      variantMean={results.primary_kpi.variant_mean}
                     />
                     <div className="grid grid-cols-2 gap-2 mt-4 text-sm">
                       <div><span className="font-medium">Control Median:</span> {results.primary_kpi.control_median}</div>
@@ -1074,8 +1078,8 @@ export default function Home() {
                               </div>
                               <KPIBarChart
                                 kpi={kpi}
-                                controlMean={res.control_median}
-                                variantMean={res.variant_median}
+                                controlMean={res.control_mean}
+                                variantMean={res.variant_mean}
                               />
                               <div className="grid grid-cols-2 gap-2 mt-4 text-sm">
                                 <div><span className="font-medium">Control Median:</span> {res.control_median}</div>

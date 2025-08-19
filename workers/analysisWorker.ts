@@ -52,7 +52,7 @@ Math.erf = function(x) {
 
 self.onmessage = function(e) {
   try {
-    const { rows, variantColumn, controlName, variantName, primaryKpi, secondaryKpis } = e.data;
+    const { rows, variantColumn, controlName, variantName, primaryKpi, secondaryKpis, fileName } = e.data;
     
     console.log('Worker: Starting analysis with', rows.length, 'rows');
     
@@ -217,7 +217,7 @@ self.onmessage = function(e) {
         variant_name: variantName,
         control_count: rows.filter(r => String(r[variantColumn]) === controlName).length,
         variant_count: rows.filter(r => String(r[variantColumn]) !== controlName).length,
-        test_name: 'Untitled Test',
+        test_name: fileName || 'Untitled Test',
         split_control: (() => {
           const controlCount = rows.filter(r => String(r[variantColumn]) === controlName).length;
           const variantCount = rows.filter(r => String(r[variantColumn]) !== controlName).length;
