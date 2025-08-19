@@ -416,8 +416,8 @@ export default function Home() {
     setParsingProgress(0);
 
     try {
-      // Use Web Worker for analysis to prevent browser freezing
-      const useWorker = parsedData.length > 50000 || secondaryKpis.length > 1;
+      // Temporarily disable Web Worker for Vercel compatibility
+      const useWorker = false; // parsedData.length > 50000 || secondaryKpis.length > 1;
       
       if (useWorker) {
         console.log('Using Web Worker for analysis');
@@ -519,11 +519,14 @@ export default function Home() {
         };
         
              } else {
-         // Fallback to regular analysis for small datasets
-         console.log('Using regular analysis for small dataset');
-         
-         // Use the already parsed data
-         const rows = parsedData;
+                 // Fallback to regular analysis for small datasets
+        console.log('Using regular analysis for small dataset');
+        
+        // Show progress for regular analysis
+        setParsingProgress(10);
+        
+        // Use the already parsed data
+        const rows = parsedData;
          console.log('Available columns:', Object.keys(rows[0] || {}));
          
          // Try to find the variant column dynamically
@@ -635,13 +638,15 @@ export default function Home() {
       const primaryResult = analyzeKpi(primaryKpi);
       const secondaryResults: Record<string, MannWhitneyResult> = {};
       
-      // Process secondary KPIs with progress updates
-      const kpisToAnalyze = secondaryKpis.filter(kpi => kpi && kpi !== primaryKpi);
-      for (let i = 0; i < kpisToAnalyze.length; i++) {
-        const kpi = kpisToAnalyze[i];
-        console.log(`Analyzing secondary KPI ${i + 1}/${kpisToAnalyze.length}: ${kpi}`);
-        secondaryResults[kpi] = analyzeKpi(kpi);
-      }
+              // Process secondary KPIs with progress updates
+        const kpisToAnalyze = secondaryKpis.filter(kpi => kpi && kpi !== primaryKpi);
+        for (let i = 0; i < kpisToAnalyze.length; i++) {
+          const kpi = kpisToAnalyze[i];
+          const progress = 20 + ((i + 1) / kpisToAnalyze.length) * 60; // 20-80%
+          console.log(`Analyzing secondary KPI ${i + 1}/${kpisToAnalyze.length}: ${kpi}`);
+          setParsingProgress(Math.round(progress));
+          secondaryResults[kpi] = analyzeKpi(kpi);
+        }
 
       // In handleAnalyze or analyzeKpi, update KPI calculations to exclude zeros
       const impactRows: KpiImpactRow[] = kpis.map(kpi => {
@@ -753,6 +758,7 @@ export default function Home() {
         setDebugInfo({ nullsA, zerosA, nullsB, zerosB });
         }
       }
+      setParsingProgress(100);
       console.log('handleAnalyze completed successfully');
     } catch (err) {
       console.error('handleAnalyze error:', err);
