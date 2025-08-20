@@ -11,7 +11,48 @@ import KPIBarChart from "@/components/KPIBarChart";
 import { useDropzone } from "react-dropzone";
 import { Badge } from "@/components/ui/badge";
 import Papa from 'papaparse';
-import * as ss from 'simple-statistics';
+// Inline statistics functions to avoid webpack issues
+const mean = (arr: number[]) => arr.reduce((a, b) => a + b, 0) / arr.length;
+const median = (arr: number[]) => {
+  const sorted = arr.slice().sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+};
+const wilcoxonRankSum = (arr1: number[], arr2: number[]) => {
+  const combined = [...arr1.map(x => ({ value: x, group: 1 })), ...arr2.map(x => ({ value: x, group: 2 }))];
+  combined.sort((a, b) => a.value - b.value);
+  let rank = 1;
+  let sum1 = 0;
+  for (let i = 0; i < combined.length; i++) {
+    if (combined[i].group === 1) sum1 += rank;
+    rank++;
+  }
+  return sum1;
+};
+const cumulativeStdNormalProbability = (z: number) => {
+  return 0.5 * (1 + Math.erf(z / Math.sqrt(2)));
+};
+// Polyfill for Math.erf
+declare global {
+  interface Math {
+    erf(x: number): number;
+  }
+}
+if (typeof Math.erf === 'undefined') {
+  Math.erf = function(x: number) {
+    const a1 =  0.254829592;
+    const a2 = -0.284496736;
+    const a3 =  1.421413741;
+    const a4 = -1.453152027;
+    const a5 =  1.061405429;
+    const p  =  0.3275911;
+    const sign = x >= 0 ? 1 : -1;
+    x = Math.abs(x);
+    const t = 1.0 / (1.0 + p * x);
+    const y = 1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-x * x);
+    return sign * y;
+  };
+}
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { Loader2 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
@@ -553,10 +594,10 @@ export default function Home() {
           console.error(`No valid data for KPI ${kpi}: control=${controlClean.length}, variant=${variantClean.length}`);
           throw new Error(`No valid data found for KPI "${kpi}". Please check if the variant column "${variantColumn}" contains "Control" values and if the KPI column has numeric data.`);
         }
-        const controlMean = controlClean.length > 0 ? ss.mean(controlClean) : 0;
-        const variantMean = variantClean.length > 0 ? ss.mean(variantClean) : 0;
-        const controlMedian = controlClean.length > 0 ? ss.median(controlClean) : 0;
-        const variantMedian = variantClean.length > 0 ? ss.median(variantClean) : 0;
+        const controlMean = controlClean.length > 0 ? mean(controlClean) : 0;
+        const variantMean = variantClean.length > 0 ? mean(variantClean) : 0;
+        const controlMedian = controlClean.length > 0 ? median(controlClean) : 0;
+        const variantMedian = variantClean.length > 0 ? median(variantClean) : 0;
         // Mean-based percent lift
         const mean_lift = controlMean !== 0 ? ((variantMean - controlMean) / controlMean) * 100 : Infinity;
         const median_lift = controlMedian !== 0 ? ((variantMedian - controlMedian) / controlMedian) * 100 : Infinity;
@@ -564,13 +605,13 @@ export default function Home() {
         let u = 0, pValue = 1, significant = false, variant_better = false;
         
         if (controlClean.length > 0 && variantClean.length > 0) {
-          u = ss.wilcoxonRankSum(controlClean, variantClean);
+          u = wilcoxonRankSum(controlClean, variantClean);
           const n1 = controlClean.length;
           const n2 = variantClean.length;
           const mu = (n1 * n2) / 2;
           const sigma = Math.sqrt((n1 * n2 * (n1 + n2 + 1)) / 12);
           const z = sigma !== 0 ? (u - mu) / sigma : 0;
-          pValue = 2 * (1 - ss.cumulativeStdNormalProbability(Math.abs(z)));
+          pValue = 2 * (1 - cumulativeStdNormalProbability(Math.abs(z)));
           significant = pValue < 0.05;
           variant_better = variantMean > controlMean;
         }
@@ -633,16 +674,16 @@ export default function Home() {
                  const variantCR = variantTotal ? (variantConverted / variantTotal) * 100 : 0;
                  const percentChange = controlCR !== 0 ? ((variantCR - controlCR) / controlCR) * 100 : 0;
                  
-                 const avgA = setA_no_zeros.length ? ss.mean(setA_no_zeros) : 0;
-                 const avgB = setB_no_zeros.length ? ss.mean(setB_no_zeros) : 0;
+                 const avgA = setA_no_zeros.length ? mean(setA_no_zeros) : 0;
+                 const avgB = setB_no_zeros.length ? mean(setB_no_zeros) : 0;
                  const percentImpact = avgA !== 0 ? ((avgB - avgA) / avgA) * 100 : 0;
-                 const medA = setA_no_zeros.length ? ss.median(setA_no_zeros) : 0;
-                 const medB = setB_no_zeros.length ? ss.median(setB_no_zeros) : 0;
+                 const medA = setA_no_zeros.length ? median(setA_no_zeros) : 0;
+                 const medB = setB_no_zeros.length ? median(setB_no_zeros) : 0;
                  
                  let pValue = null;
                  let significant = false;
                  if (setA_no_zeros.length > 0 && setB_no_zeros.length > 0) {
-                   pValue = ss.wilcoxonRankSum(setA_no_zeros, setB_no_zeros);
+                   pValue = wilcoxonRankSum(setA_no_zeros, setB_no_zeros);
                    significant = pValue < 0.1;
                  }
                  
@@ -718,16 +759,16 @@ export default function Home() {
             const variantCR = variantTotal ? (variantConverted / variantTotal) * 100 : 0;
             const percentChange = controlCR !== 0 ? ((variantCR - controlCR) / controlCR) * 100 : 0;
             
-            const avgA = setA_no_zeros.length ? ss.mean(setA_no_zeros) : 0;
-            const avgB = setB_no_zeros.length ? ss.mean(setB_no_zeros) : 0;
+            const avgA = setA_no_zeros.length ? mean(setA_no_zeros) : 0;
+            const avgB = setB_no_zeros.length ? mean(setB_no_zeros) : 0;
             const percentImpact = avgA !== 0 ? ((avgB - avgA) / avgA) * 100 : 0;
-            const medA = setA_no_zeros.length ? ss.median(setA_no_zeros) : 0;
-            const medB = setB_no_zeros.length ? ss.median(setB_no_zeros) : 0;
+            const medA = setA_no_zeros.length ? median(setA_no_zeros) : 0;
+            const medB = setB_no_zeros.length ? median(setB_no_zeros) : 0;
             
             let pValue = null;
             let significant = false;
             if (setA_no_zeros.length > 0 && setB_no_zeros.length > 0) {
-              pValue = ss.wilcoxonRankSum(setA_no_zeros, setB_no_zeros);
+              pValue = wilcoxonRankSum(setA_no_zeros, setB_no_zeros);
               significant = pValue < 0.1;
             }
             
@@ -787,16 +828,16 @@ export default function Home() {
         const variantCR = variantTotal ? (variantConverted / variantTotal) * 100 : 0;
         const percentChange = controlCR !== 0 ? ((variantCR - controlCR) / controlCR) * 100 : 0;
         // Means, medians, percent impact (non-zero data only)
-        const avgA = setA_no_zeros.length ? ss.mean(setA_no_zeros) : 0;
-        const avgB = setB_no_zeros.length ? ss.mean(setB_no_zeros) : 0;
+        const avgA = setA_no_zeros.length ? mean(setA_no_zeros) : 0;
+        const avgB = setB_no_zeros.length ? mean(setB_no_zeros) : 0;
         const percentImpact = avgA !== 0 ? ((avgB - avgA) / avgA) * 100 : 0;
-        const medA = setA_no_zeros.length ? ss.median(setA_no_zeros) : 0;
-        const medB = setB_no_zeros.length ? ss.median(setB_no_zeros) : 0;
+        const medA = setA_no_zeros.length ? median(setA_no_zeros) : 0;
+        const medB = setB_no_zeros.length ? median(setB_no_zeros) : 0;
         // Mann-Whitney U test (non-zero data only)
         let pValue = null;
         let significant = false;
         if (setA_no_zeros.length > 0 && setB_no_zeros.length > 0) {
-          pValue = ss.wilcoxonRankSum(setA_no_zeros, setB_no_zeros);
+          pValue = wilcoxonRankSum(setA_no_zeros, setB_no_zeros);
           significant = pValue < 0.1;
         }
         // Return for table (table still shows sum/CR for all, but means/medians/p-value for non-zero)

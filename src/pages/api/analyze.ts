@@ -1,6 +1,37 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import Papa from 'papaparse';
-import ss from 'simple-statistics';
+// Inline statistics functions to avoid webpack issues
+const mean = (arr: number[]) => arr.reduce((a, b) => a + b, 0) / arr.length;
+const sum = (arr: number[]) => arr.reduce((a, b) => a + b, 0);
+const median = (arr: number[]) => {
+  const sorted = arr.slice().sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+};
+const cumulativeStdNormalProbability = (z: number) => {
+  return 0.5 * (1 + Math.erf(z / Math.sqrt(2)));
+};
+// Polyfill for Math.erf
+declare global {
+  interface Math {
+    erf(x: number): number;
+  }
+}
+if (typeof Math.erf === 'undefined') {
+  Math.erf = function(x: number) {
+    const a1 =  0.254829592;
+    const a2 = -0.284496736;
+    const a3 =  1.421413741;
+    const a4 = -1.453152027;
+    const a5 =  1.061405429;
+    const p  =  0.3275911;
+    const sign = x >= 0 ? 1 : -1;
+    x = Math.abs(x);
+    const t = 1.0 / (1.0 + p * x);
+    const y = 1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-x * x);
+    return sign * y;
+  };
+}
 
 // Use a simple Mann-Whitney U implementation from simple-statistics
 function mannWhitneyU(a: number[], b: number[]): number {
@@ -15,11 +46,11 @@ function mannWhitneyU(a: number[], b: number[]): number {
     if (!rankMap.has(v)) rankMap.set(v, []);
     rankMap.get(v)!.push(ranks[i]);
   });
-  const getAvgRank = (v: number) => ss.mean(rankMap.get(v)!);
+  const getAvgRank = (v: number) => mean(rankMap.get(v)!);
   const rankA = a.map(getAvgRank);
   const rankB = b.map(getAvgRank);
-  const sumRankA = ss.sum(rankA);
-  const sumRankB = ss.sum(rankB);
+  const sumRankA = sum(rankA);
+  const sumRankB = sum(rankB);
   const u1 = sumRankA - (n1 * (n1 + 1)) / 2;
   const u2 = sumRankB - (n2 * (n2 + 1)) / 2;
   return Math.min(u1, u2);
@@ -51,10 +82,10 @@ function runMannWhitneyTest(
     .map(r => Number(r[kpi]) || 0);
 
   // Means and medians
-  const meanA = ss.mean(setA);
-  const meanB = ss.mean(setB);
-  const medianA = ss.median(setA);
-  const medianB = ss.median(setB);
+  const meanA = mean(setA);
+  const meanB = mean(setB);
+  const medianA = median(setA);
+  const medianB = median(setB);
 
   // Percent lift (based on mean)
   const lift = meanA !== 0 ? ((meanB - meanA) / meanA) * 100 : Infinity;
@@ -68,7 +99,7 @@ function runMannWhitneyTest(
   const sigma = Math.sqrt((n1 * n2 * (n1 + n2 + 1)) / 12);
   const z = sigma !== 0 ? (u - mu) / sigma : 0;
   // Use probit for p-value calculation
-  const pValue = 2 * (1 - ss.cumulativeStdNormalProbability(Math.abs(z)));
+  const pValue = 2 * (1 - cumulativeStdNormalProbability(Math.abs(z)));
   const significant = pValue < 0.1;
   const variantBetter = medianB > medianA;
 
