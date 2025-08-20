@@ -473,49 +473,8 @@ export default function Home() {
         
         console.log(`Using variant column: ${variantColumn}, control name: ${controlName}, variant name: ${variantName}`);
         
-        // Send data to worker
-        worker.postMessage({
-          rows,
-          variantColumn,
-          controlName,
-          variantName,
-          primaryKpi,
-          secondaryKpis,
-          fileName: file?.name || 'Untitled Test'
-        });
-        
-        // Handle worker messages
-        worker.onmessage = (e) => {
-          const { type, message, percent, results, impactRows, debugInfo } = e.data;
-          
-          if (type === 'progress') {
-            console.log('Analysis progress:', message, percent + '%');
-            setParsingProgress(percent);
-          } else if (type === 'done') {
-            console.log('Analysis completed successfully');
-            setResults(results);
-            setKpiImpact(impactRows);
-            setDebugInfo(debugInfo);
-            setParsingProgress(100);
-            setLoading(false);
-            setStep(3);
-            worker.terminate();
-          } else if (type === 'error') {
-            console.error('Worker error:', message);
-            setError(message);
-            setLoading(false);
-            setParsingProgress(0);
-            worker.terminate();
-          }
-        };
-        
-        worker.onerror = (error) => {
-          console.error('Worker error:', error);
-          setError("Analysis worker failed. Please try again.");
-          setLoading(false);
-          setParsingProgress(0);
-          worker.terminate();
-        };
+        // Web Worker temporarily disabled - using main thread analysis
+        console.log('Web Worker disabled, using main thread analysis');
         
              } else {
                  // Fallback to regular analysis for small datasets
