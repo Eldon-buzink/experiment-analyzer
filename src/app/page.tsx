@@ -417,14 +417,13 @@ export default function Home() {
 
     try {
       // Temporarily disable Web Worker for Vercel compatibility
-      const useWorker = false; // parsedData.length > 50000 || secondaryKpis.length > 1;
+      const useWorker = false; // Always use main thread for now
       
       if (useWorker) {
         console.log('Using Web Worker for analysis');
         
-        const worker = new Worker(new URL("../../workers/analysisWorker.ts", import.meta.url), {
-          type: "module",
-        });
+        // Worker temporarily disabled for Vercel compatibility
+        console.log('Web Worker temporarily disabled');
         
         // Prepare data for worker
         const rows = parsedData;
@@ -1013,12 +1012,24 @@ export default function Home() {
                     setParsingProgress(0);
                   }, 30000); // 30 second timeout
                   
-                  await handleAnalyze(e); 
-                  clearTimeout(analysisTimeout); // Clear timeout if analysis completes
-                  console.log('handleAnalyze completed, error:', error);
-                  if (!error) {
-                    console.log('Moving to step 3');
-                    setStep(3);
+                  // Add a timeout to prevent browser from becoming unresponsive
+                  const analysisPromise = handleAnalyze(e);
+                  const timeoutPromise = new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error('Analysis is taking too long. Please try with fewer KPIs.')), 30000);
+                  });
+                  
+                  try {
+                    await Promise.race([analysisPromise, timeoutPromise]);
+                    clearTimeout(analysisTimeout);
+                    console.log('handleAnalyze completed, error:', error);
+                    if (!error) {
+                      console.log('Moving to step 3');
+                      setStep(3);
+                    }
+                  } catch (timeoutError) {
+                    setError(timeoutError instanceof Error ? timeoutError.message : 'Analysis timed out');
+                    setLoading(false);
+                    setParsingProgress(0);
                   }
                 }} className="flex flex-col gap-4">
                   <div>
