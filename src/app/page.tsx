@@ -522,7 +522,7 @@ export default function Home() {
         console.log('Using regular analysis for small dataset');
         
         // Show progress for regular analysis
-        setParsingProgress(10);
+        setParsingProgress(5); // Start with immediate feedback
         
         // Use the already parsed data
         const rows = parsedData;
@@ -571,6 +571,7 @@ export default function Home() {
          const variantName = sortedValues[1]?.[0] || 'Variant';
          
          console.log(`Using variant column: ${variantColumn}, control name: ${controlName}, variant name: ${variantName}`);
+         setParsingProgress(15); // Data preparation complete
 
         function analyzeKpi(kpi: string): MannWhitneyResult & { debug: { controlSize: number, variantSize: number, controlZeros: number, variantZeros: number } } {
         console.log(`Analyzing KPI: ${kpi}`);
@@ -635,6 +636,7 @@ export default function Home() {
       }
 
       const primaryResult = analyzeKpi(primaryKpi);
+      setParsingProgress(30); // Primary KPI analysis complete
       const secondaryResults: Record<string, MannWhitneyResult> = {};
       
               // Process secondary KPIs with chunked processing to prevent UI freezing
@@ -1075,13 +1077,21 @@ export default function Home() {
                       {loading ? "Analyzing..." : "Next"}
                     </Button>
                   </div>
-                  {loading && parsingProgress > 0 && (
-                    <div className="mt-4">
-                      <div className="flex justify-between text-sm text-muted-foreground mb-2">
+                  {loading && (
+                    <div className="mt-4 space-y-4">
+                      <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                        <Loader2 className="w-4 h-4 animate-spin" />
                         <span>Analyzing data...</span>
-                        <span>{parsingProgress}%</span>
                       </div>
-                      <Progress value={parsingProgress} className="w-full" />
+                      {parsingProgress > 0 && (
+                        <div className="space-y-2">
+                          <div className="flex justify-between text-xs text-muted-foreground">
+                            <span>Progress</span>
+                            <span>{parsingProgress}%</span>
+                          </div>
+                          <Progress value={parsingProgress} className="w-full h-2" />
+                        </div>
+                      )}
                     </div>
                   )}
                   {error && <div className="text-red-500 mt-4">{error}</div>}
