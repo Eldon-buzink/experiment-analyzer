@@ -11,7 +11,7 @@ import KPIBarChart from "@/components/KPIBarChart";
 import { useDropzone } from "react-dropzone";
 import { Badge } from "@/components/ui/badge";
 import Papa from 'papaparse';
-// Inline statistics functions to avoid webpack issues
+// Simple statistics functions to avoid webpack issues
 const mean = (arr: number[]) => arr.reduce((a, b) => a + b, 0) / arr.length;
 const median = (arr: number[]) => {
   const sorted = arr.slice().sort((a, b) => a - b);
@@ -29,30 +29,11 @@ const wilcoxonRankSum = (arr1: number[], arr2: number[]) => {
   }
   return sum1;
 };
+// Simplified p-value calculation without Math.erf
 const cumulativeStdNormalProbability = (z: number) => {
-  return 0.5 * (1 + Math.erf(z / Math.sqrt(2)));
+  // Simple approximation for normal distribution
+  return z > 0 ? 0.5 + 0.5 * Math.tanh(z / Math.sqrt(2)) : 0.5 - 0.5 * Math.tanh(Math.abs(z) / Math.sqrt(2));
 };
-// Polyfill for Math.erf
-declare global {
-  interface Math {
-    erf(x: number): number;
-  }
-}
-if (typeof Math.erf === 'undefined') {
-  Math.erf = function(x: number) {
-    const a1 =  0.254829592;
-    const a2 = -0.284496736;
-    const a3 =  1.421413741;
-    const a4 = -1.453152027;
-    const a5 =  1.061405429;
-    const p  =  0.3275911;
-    const sign = x >= 0 ? 1 : -1;
-    x = Math.abs(x);
-    const t = 1.0 / (1.0 + p * x);
-    const y = 1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-x * x);
-    return sign * y;
-  };
-}
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { Loader2 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";

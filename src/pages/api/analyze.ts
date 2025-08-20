@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import Papa from 'papaparse';
-// Inline statistics functions to avoid webpack issues
+// Simple statistics functions to avoid webpack issues
 const mean = (arr: number[]) => arr.reduce((a, b) => a + b, 0) / arr.length;
 const sum = (arr: number[]) => arr.reduce((a, b) => a + b, 0);
 const median = (arr: number[]) => {
@@ -8,30 +8,11 @@ const median = (arr: number[]) => {
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
 };
+// Simplified p-value calculation without Math.erf
 const cumulativeStdNormalProbability = (z: number) => {
-  return 0.5 * (1 + Math.erf(z / Math.sqrt(2)));
+  // Simple approximation for normal distribution
+  return z > 0 ? 0.5 + 0.5 * Math.tanh(z / Math.sqrt(2)) : 0.5 - 0.5 * Math.tanh(Math.abs(z) / Math.sqrt(2));
 };
-// Polyfill for Math.erf
-declare global {
-  interface Math {
-    erf(x: number): number;
-  }
-}
-if (typeof Math.erf === 'undefined') {
-  Math.erf = function(x: number) {
-    const a1 =  0.254829592;
-    const a2 = -0.284496736;
-    const a3 =  1.421413741;
-    const a4 = -1.453152027;
-    const a5 =  1.061405429;
-    const p  =  0.3275911;
-    const sign = x >= 0 ? 1 : -1;
-    x = Math.abs(x);
-    const t = 1.0 / (1.0 + p * x);
-    const y = 1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-x * x);
-    return sign * y;
-  };
-}
 
 // Use a simple Mann-Whitney U implementation from simple-statistics
 function mannWhitneyU(a: number[], b: number[]): number {
