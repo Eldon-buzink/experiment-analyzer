@@ -455,6 +455,9 @@ export default function Home() {
     setError("");
     setResults(null);
     setParsingProgress(0);
+    
+    // Give React time to paint the loading state before starting heavy computation
+    await new Promise(resolve => setTimeout(resolve, 50));
 
     try {
       // Temporarily disable Web Worker for Vercel compatibility
@@ -1073,8 +1076,13 @@ export default function Home() {
                     <Button type="button" variant="outline" onClick={() => setStep(1)}>
                       Back
                     </Button>
-                    <Button type="submit" disabled={!primaryKpi || loading}>
-                      {loading ? "Analyzing..." : "Next"}
+                    <Button type="submit" disabled={!primaryKpi || loading} className={loading ? "opacity-50" : ""}>
+                      {loading ? (
+                        <span className="flex items-center gap-2">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Analyzing...
+                        </span>
+                      ) : "Next"}
                     </Button>
                   </div>
                   {loading && (
@@ -1090,6 +1098,11 @@ export default function Home() {
                             <span>{parsingProgress}%</span>
                           </div>
                           <Progress value={parsingProgress} className="w-full h-2" />
+                        </div>
+                      )}
+                      {parsingProgress === 0 && (
+                        <div className="text-center text-xs text-muted-foreground">
+                          Preparing analysis...
                         </div>
                       )}
                     </div>
